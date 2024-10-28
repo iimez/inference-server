@@ -13,7 +13,7 @@ import {
 	LogLevel,
 	createSublogger,
 } from '#package/lib/logger.js'
-import { mergeAbortSignals } from '#package/lib/util.js'
+import { formatBytesPerSecond, mergeAbortSignals } from '#package/lib/util.js'
 
 interface ModelFile {
 	size: number
@@ -125,22 +125,23 @@ export class ModelStore {
 						(acc, status) => {
 							acc.loadedBytes += status?.loadedBytes || 0
 							acc.totalBytes += status?.totalBytes || 0
+							acc.speed += status?.speed || 0
 							return acc
 						},
-						{ loadedBytes: 0, totalBytes: 0 },
+						{ loadedBytes: 0, totalBytes: 0, speed: 0 },
 					)
 				if (progress.totalBytes) {
 					const percent = (progress.loadedBytes / progress.totalBytes) * 100
 					const formattedTotalBytes = prettyBytes(progress.totalBytes, { space: false })
 					const formattedLoadedBytes = prettyBytes(progress.loadedBytes, { space: false })
-					this.log(LogLevels.info, `Downloading at ${percent.toFixed(1)}% - ${formattedLoadedBytes} of ${formattedTotalBytes}`, {
+					this.log(LogLevels.info, `Downloading at ${formatBytesPerSecond(progress.speed)} ${percent.toFixed(1)}% - ${formattedLoadedBytes} of ${formattedTotalBytes}`, {
 						model: modelId,
 					})
 				}
 			}, 10000)
 			try {
 				const modelMeta = await engine.prepareModel(
-					{ config: model, log: this.log, modelsPath: this.modelsPath },
+					{ config: model, log: this.log },
 					(progress) => {
 						this.onDownloadProgress(model.id, progress)
 					},
@@ -264,7 +265,7 @@ class DownloadTracker {
 
 		const speed = bytesLoaded / (timeElapsed / 1000) // bytes per second
 		const remainingBytes = latestState.totalBytes - latestState.loadedBytes
-		const eta = remainingBytes / speed // in seconds
+		const eta = speed > 0 ? remainingBytes / speed : 0
 
 		return {
 			speed,
