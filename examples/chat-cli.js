@@ -4,7 +4,7 @@ import { ModelServer } from '#package/index.js'
 
 // A command-line chat example using the ModelServer.
 
-const llms = new ModelServer({
+const modelServer = new ModelServer({
 	// log: 'info',
 	models: {
 		'my-model': {
@@ -20,7 +20,7 @@ const llms = new ModelServer({
 
 console.log('Initializing models...')
 
-await llms.start()
+await modelServer.start()
 
 const rl = readline.createInterface({
 	input: process.stdin,
@@ -40,7 +40,7 @@ while (true) {
 		content: input,
 	})
 	process.stdout.write(chalk.bold(chalk.dim('model > ')))
-	const result = await llms.processChatCompletionTask(
+	const result = await modelServer.processChatCompletionTask(
 		{
 			model: 'my-model',
 			messages,

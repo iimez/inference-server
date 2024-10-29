@@ -1,4 +1,4 @@
-See [discussion](https://github.com/iimez/lllms/discussions/8) for more details.
+See [discussion](https://github.com/iimez/inference-server/discussions/8) for more details.
 
 ### Task API
 

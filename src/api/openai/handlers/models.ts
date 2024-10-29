@@ -4,10 +4,10 @@ import type { OpenAI } from 'openai'
 import type { ModelServer } from '#package/server'
 
 // https://platform.openai.com/docs/api-reference/models/list
-export function createModelsHandler(llms: ModelServer) {
+export function createModelsHandler(modelServer: ModelServer) {
 	return async (req: IncomingMessage, res: ServerResponse) => {
 		
-		const models = llms.store.getStatus()
+		const models = modelServer.store.getStatus()
 		const data: OpenAI.Model[] = Object.entries(models).map(
 			([id, info]) => {
 				// const lastModDate = new Date(info.source.lastModified)

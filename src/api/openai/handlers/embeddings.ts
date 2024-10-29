@@ -9,7 +9,7 @@ type OpenAIEmbeddingsParams = OpenAI.EmbeddingCreateParams
 
 // v1/embeddings
 // https://platform.openai.com/docs/api-reference/embeddings
-export function createEmbeddingsHandler(llms: ModelServer) {
+export function createEmbeddingsHandler(modelServer: ModelServer) {
 	return async (req: IncomingMessage, res: ServerResponse) => {
 		let args: OpenAIEmbeddingsParams
 
@@ -29,7 +29,7 @@ export function createEmbeddingsHandler(llms: ModelServer) {
 			res.end(JSON.stringify({ error: 'Invalid request' }))
 			return
 		}
-		if (!llms.modelExists(args.model)) {
+		if (!modelServer.modelExists(args.model)) {
 			res.writeHead(400, { 'Content-Type': 'application/json' })
 			res.end(JSON.stringify({ error: 'Invalid model' }))
 			return
@@ -59,7 +59,7 @@ export function createEmbeddingsHandler(llms: ModelServer) {
 				input: args.input as string,
 			})
 
-			const { instance, release } = await llms.requestInstance(
+			const { instance, release } = await modelServer.requestInstance(
 				embeddingsReq,
 				controller.signal,
 			)

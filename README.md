@@ -1,4 +1,4 @@
-## lllms
+## inference-server
 
 Libraries and server to build AI applications doing local inference in node. Use it within your application, or as a microservice. Adapters to [llama.cpp](https://github.com/ggerganov/llama.cpp/) via [node-llama-cpp](https://github.com/withcatai/node-llama-cpp) and [gpt4all](https://github.com/nomic-ai/gpt4all). And [transformers.js](https://github.com/xenova/transformers.js/) using [ONNX](https://github.com/microsoft/onnxruntime/tree/main/js#onnxruntime-node)!
 
@@ -23,9 +23,9 @@ The project includes a model resource pool, an inference queue and a HTTP API se
 Example with minimal configuration:
 
 ```ts basic.ts
-import { ModelServer } from 'lllms'
+import { ModelServer } from 'inference-server'
 
-const llms = new ModelServer({
+const modelServer = new ModelServer({
   log: 'info', // default is 'warn'
   models: {
     'my-model': { // Identifiers can use a-zA-Z0-9_:\-\.
@@ -36,8 +36,8 @@ const llms = new ModelServer({
     },
   },
 })
-await llms.start()
-const result = await llms.processChatCompletionTask({
+await modelServer.start()
+const result = await modelServer.processChatCompletionTask({
   model: 'my-model',
   messages: [
     {
@@ -47,13 +47,13 @@ const result = await llms.processChatCompletionTask({
   ],
 })
 console.debug(result)
-llms.stop()
+modelServer.stop()
 ```
 
 Or, to start an OAI compatible HTTP server with two concurrent instances of the same model:
 
 ```ts http-api.ts
-import { startHTTPServer } from 'lllms'
+import { startHTTPServer } from 'inference-server'
 import OpenAI from 'openai'
 
 const server = await startHTTPServer({
@@ -180,18 +180,18 @@ Not in any particular order:
 - [ ] Add image generation endpoint in oai api
 - [ ] Add transcript endpoint in oai api
 - [ ] Add `n` parameter support to node-llama-cpp chat completions
-- [ ] [CLI](https://github.com/iimez/lllms/discussions/7)
+- [ ] [CLI](https://github.com/iimez/inference-server/discussions/7)
 - [ ] Replace express with tinyhttp
 - [ ] Add stable-diffusion engine
 
 ### Contributing
 
-If you are using this package - let me know where [you would like this to go](https://github.com/iimez/lllms/discussions). Code also welcome. You find things im planning to do (eventually) above, and the wishlist below.
+If you are using this package - let me know where [you would like this to go](https://github.com/iimez/inference-server/discussions). Code also welcome. You find things im planning to do (eventually) above, and the wishlist below.
 
 #### Possible Future Goals
 
 - See if it would make sense to implement engines for [leejet/stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) and [onnxruntime-node](https://www.npmjs.com/package/onnxruntime-node)
-- Create a separate HTTP API thats independent of the OpenAI spec and stateful. See [discussion](https://github.com/iimez/lllms/discussions/8).
+- Create a separate HTTP API thats independent of the OpenAI spec and stateful. See [discussion](https://github.com/iimez/inference-server/discussions/8).
 - Add a clientside library (React hooks?) for use of above API.
 - Provide a Docker image. And maybe a Prometheus endpoint.
 - Logprobs support for node-llama-cpp.

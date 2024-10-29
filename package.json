@@ -1,5 +1,5 @@
 {
-	"name": "lllms",
+	"name": "inference-server",
 	"version": "1.0.0-beta.19",
 	"description": "Libraries and server to build AI applications. Adapters to various native bindings allowing local inference. Integrate it with your application, or use as a microservice.",
 	"main": "dist/index.js",
@@ -10,9 +10,9 @@
 	"bin": {
 		"lllms": "./dist/cli.js"
 	},
-	"repository": "github:iimez/lllms",
+	"repository": "github:iimez/inference-server",
 	"bugs": {
-		"url": "https://github.com/iimez/lllms/issues"
+		"url": "https://github.com/iimez/inference-server/issues"
 	},
 	"scripts": {
 		"upgrade": "npx npm-check-updates -i",

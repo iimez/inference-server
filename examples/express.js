@@ -7,10 +7,8 @@ import { createExpressMiddleware } from '#package/http.js'
 // Demonstration of using the ModelServer + Express middleware to serve an OpenAI API.
 
 // Create a server with a single model, limiting to 2 instances that can run concurrently.
-// Models will be downloaded on-demand or during LLMServer.start() if minInstances > 0.
-const llms = new ModelServer({
-	// Default model path is ~/.cache/lllms.
-	// modelsPath: path.resolve(os.homedir(), '.cache/models'),
+// Models will be downloaded on-demand or during ModelServer.start() if minInstances > 0.
+const modelServer = new ModelServer({
 	concurrency: 2,
 	models: {
 		'my-model': {
@@ -23,10 +21,10 @@ const llms = new ModelServer({
 	},
 })
 
-await llms.start()
+await modelServer.start()
 
 const app = express()
-app.use(express.json(), createExpressMiddleware(llms))
+app.use(express.json(), createExpressMiddleware(modelServer))
 const server = http.createServer(app)
 server.listen(3001)
 

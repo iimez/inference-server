@@ -26,7 +26,7 @@ const pool = new ModelPool(
 				// note that this path needs to be absolute and the file needs to be downloaded beforehand.
 				location: path.resolve(
 					os.homedir(),
-					'.cache/lllms/huggingface/HuggingFaceTB/smollm-135M-instruct-v0.2-Q8_0-GGUF-main/smollm-135m-instruct-add-basics-q8_0.gguf',
+					'.cache/inference-server/huggingface.co/HuggingFaceTB/smollm-135M-instruct-v0.2-Q8_0-GGUF-main/smollm-135m-instruct-add-basics-q8_0.gguf',
 				),
 				engine: 'node-llama-cpp',
 				minInstances: 1, // setting this to something greater 0 will load the model on pool.init()

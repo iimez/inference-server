@@ -121,7 +121,7 @@ function createResponseMessageContent(
 
 // v1/chat/completions
 // https://platform.openai.com/docs/api-reference/chat/create
-export function createChatCompletionHandler(llms: ModelServer) {
+export function createChatCompletionHandler(modelServer: ModelServer) {
 	return async (req: IncomingMessage, res: ServerResponse) => {
 		let args: OpenAIChatCompletionParams
 
@@ -142,7 +142,7 @@ export function createChatCompletionHandler(llms: ModelServer) {
 			return
 		}
 
-		if (!llms.modelExists(args.model)) {
+		if (!modelServer.modelExists(args.model)) {
 			res.writeHead(400, { 'Content-Type': 'application/json' })
 			res.end(JSON.stringify({ error: 'Model does not exist' }))
 			return
@@ -245,7 +245,7 @@ export function createChatCompletionHandler(llms: ModelServer) {
 				minP: args.min_p ? args.min_p : undefined,
 				topK: args.top_k ? args.top_k : undefined,
 			})
-			const { instance, release } = await llms.requestInstance(
+			const { instance, release } = await modelServer.requestInstance(
 				completionReq,
 				controller.signal,
 			)

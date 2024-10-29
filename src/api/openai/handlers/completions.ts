@@ -20,7 +20,7 @@ interface OpenAICompletionChunk extends OpenAI.Completions.Completion {
 
 // v1/completions
 // https://platform.openai.com/docs/api-reference/completions/create
-export function createCompletionHandler(llms: ModelServer) {
+export function createCompletionHandler(modelServer: ModelServer) {
 	return async (req: IncomingMessage, res: ServerResponse) => {
 		let args: OpenAICompletionParams
 
@@ -40,7 +40,7 @@ export function createCompletionHandler(llms: ModelServer) {
 			res.end(JSON.stringify({ error: 'Invalid request' }))
 			return
 		}
-		if (!llms.modelExists(args.model)) {
+		if (!modelServer.modelExists(args.model)) {
 			res.writeHead(400, { 'Content-Type': 'application/json' })
 			res.end(JSON.stringify({ error: 'Invalid model' }))
 			return
@@ -101,7 +101,7 @@ export function createCompletionHandler(llms: ModelServer) {
 				topK: args.top_k ? args.top_k : undefined,
 			})
 
-			const { instance, release } = await llms.requestInstance(
+			const { instance, release } = await modelServer.requestInstance(
 				completionReq,
 				controller.signal,
 			)

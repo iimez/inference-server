@@ -3,7 +3,7 @@ import { startModelServer } from '#package/index.js'
 
 // A minimal chat server using the ModelServer.
 
-const llms = await startModelServer({
+const modelServer = await startModelServer({
 	log: 'info',
 	concurrency: 2,
 	models: {
@@ -24,7 +24,7 @@ const httpServer = http.createServer((req, res) => {
 		})
 		req.on('end', async () => {
 			const req = JSON.parse(body)
-			const completion = await llms.processChatCompletionTask(req)
+			const completion = await modelServer.processChatCompletionTask(req)
 			res.writeHead(200, { 'Content-Type': 'application/json' })
 			res.end(JSON.stringify(completion, null, 2))
 		})
