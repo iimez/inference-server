@@ -785,7 +785,7 @@ export async function processEmbeddingTask(
 	}
 
 	// @ts-ignore - private property
-	const contextSize = embeddingContext._llamaContext.contextSize
+	const contextSize = instance.embeddingContext._llamaContext.contextSize
 
 	const embeddings: Float32Array[] = []
 	let inputTokens = 0
