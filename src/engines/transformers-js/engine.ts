@@ -28,9 +28,10 @@ import {
 } from '@huggingface/transformers'
 import { LogLevels } from '#package/lib/logger.js'
 import { acquireFileLock } from '#package/lib/acquireFileLock.js'
-import { copyDirectory } from '#package/lib/copyDirectory.js'
-import { decodeAudio } from '#package/lib/audio.js'
-import { parseModelUrl, remoteFileExists } from './util.js'
+import { decodeAudio } from '#package/lib/decodeAudio.js'
+import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
+import { parseHuggingfaceModelIdAndBranch, remoteFileExists } from './util.js'
+import { validateModelFiles, ModelValidationResult } from './validateModelFiles.js'
 
 interface TransformersJsModelComponents {
 	model?: PreTrainedModel
@@ -83,10 +84,13 @@ function configureEnvironment(modelsPath: string) {
 async function loadModelComponents(
 	modelOpts: TransformersJsModel,
 	config: TransformersJsModelConfig,
-	modelPath: string,
 ): Promise<TransformersJsModelComponents> {
 	const device = config.device?.gpu ? 'gpu' : 'cpu'
 	const modelClass = modelOpts.modelClass ?? AutoModel
+	let modelPath = config.location
+	if (!modelPath.endsWith('/')) {
+		modelPath += '/'
+	}
 	const loadPromises = []
 	const modelPromise = modelClass.from_pretrained(modelPath, {
 		local_files_only: true,
@@ -106,8 +110,14 @@ async function loadModelComponents(
 	if (hasProcessor || hasPreprocessor || modelOpts.processor) {
 		const processorClass = modelOpts.processorClass ?? AutoProcessor
 		if (modelOpts.processor) {
-			const { modelId } = parseModelUrl(modelOpts.processor.url)
-			const processorPromise = processorClass.from_pretrained(modelId)
+			const processorPath = resolveModelFileLocation({
+				url: modelOpts.processor.url,
+				filePath: modelOpts.processor.file,
+				modelsPath: config.modelsPath,
+			})
+			const processorPromise = processorClass.from_pretrained(processorPath, {
+				local_files_only: true,
+			})
 			loadPromises.push(processorPromise)
 		} else {
 			const processorPromise = processorClass.from_pretrained(modelPath, {
@@ -131,199 +141,70 @@ async function loadModelComponents(
 	return modelComponents
 }
 
-async function disposeModelComponents(
-	modelComponents: TransformersJsModelComponents,
-) {
+async function disposeModelComponents(modelComponents: TransformersJsModelComponents) {
 	if (modelComponents.model && 'dispose' in modelComponents.model) {
 		await modelComponents.model.dispose()
 	}
 }
 
-async function validateModel(
-	modelOpts: TransformersJsModel,
-	config: TransformersJsModelConfig,
-	modelPath: string,
-): Promise<string | undefined> {
-	const modelClass = modelOpts.modelClass ?? AutoModel
-	const device = config.device?.gpu ? 'gpu' : 'cpu'
-	try {
-		const model = await modelClass.from_pretrained(modelPath, {
-			local_files_only: true,
-			device: device,
-			dtype: modelOpts.dtype || 'fp32',
-		})
-		await model.dispose()
-	} catch (error) {
-		return `failed to load model: ${error}`
+interface TransformersJsDownloadProgress {
+	status: 'progress' | 'done' | 'initiate'
+	name: string
+	file: string
+	progress: number
+	loaded: number
+	total: number
+}
+
+async function acquireModelFileLocks(config: TransformersJsModelConfig, signal?: AbortSignal) {
+	const requestedLocks: Array<Promise<() => void>> = []
+	const modelId = config.id
+	const modelCacheDir = path.join(env.cacheDir, modelId)
+	fs.mkdirSync(modelCacheDir, { recursive: true })
+	requestedLocks.push(acquireFileLock(modelCacheDir, signal))
+	if (config.visionModel?.processor?.url) {
+		const { modelId } = parseHuggingfaceModelIdAndBranch(config.visionModel.processor.url)
+		const processorCacheDir = path.join(env.cacheDir, modelId)
+		fs.mkdirSync(processorCacheDir, { recursive: true })
+		requestedLocks.push(acquireFileLock(processorCacheDir, signal))
 	}
-	return undefined
-}
-
-async function validateTokenizer(
-	modelOpts: TransformersJsModel,
-	modelPath: string,
-): Promise<string | undefined> {
-	const tokenizerClass = modelOpts.tokenizerClass ?? AutoTokenizer
-	try {
-		await tokenizerClass.from_pretrained(modelPath, {
-			local_files_only: true,
-		})
-	} catch (error) {
-		return `failed to load tokenizer: ${error}`
-	}
-	return undefined
-}
-
-async function validateProcessor(
-	modelOpts: TransformersJsModel,
-	modelPath: string,
-): Promise<string | undefined> {
-	const processorClass = modelOpts.processorClass ?? AutoProcessor
-	try {
-		if (modelOpts.processor) {
-			const { modelId } = parseModelUrl(modelOpts.processor.url)
-			await processorClass.from_pretrained(modelId, {
-				local_files_only: true,
-			})
-		} else {
-			await processorClass.from_pretrained(modelPath, {
-				local_files_only: true,
-			})
-		}
-	} catch (error) {
-		return `failed to load processor: ${error}`
-	}
-	return undefined
-}
-
-interface ComponentValidationErrors {
-	model?: string
-	tokenizer?: string
-	processor?: string
-}
-
-interface ModelValidationErrors {
-	textModel?: ComponentValidationErrors
-	visionModel?: ComponentValidationErrors
-	speechModel?: ComponentValidationErrors
-}
-
-interface ModelFileValidationResult {
-	message: string
-	errors?: ModelValidationErrors
-}
-
-async function validateModelFiles(
-	config: TransformersJsModelConfig,
-): Promise<ModelFileValidationResult | undefined> {
-	if (!fs.existsSync(config.location)) {
-		return {
-			message: `model directory does not exist: ${config.location}`,
+	const acquiredLocks = await Promise.all(requestedLocks)
+	return () => {
+		for (const releaseLock of acquiredLocks) {
+			releaseLock()
 		}
 	}
-
-	let modelPath = config.location
-	if (!modelPath.endsWith('/')) {
-		modelPath += '/'
-	}
-
-	const validateModelComponents = async (modelOpts: TransformersJsModel) => {
-		const componentValidationPromises = [
-			validateModel(modelOpts, config, modelPath),
-			validateTokenizer(modelOpts, modelPath),
-		]
-		if (modelOpts.processor) {
-			componentValidationPromises.push(validateProcessor(modelOpts, modelPath))
-		}
-		const [model, tokenizer, processor] = await Promise.all(
-			componentValidationPromises,
-		)
-		const result: ComponentValidationErrors = {}
-		if (model) result.model = model
-		if (tokenizer) result.tokenizer = tokenizer
-		if (processor) result.processor = processor
-		return result
-	}
-
-	const modelValidationPromises: any = {}
-	const noModelConfigured =
-		!config.textModel && !config.visionModel && !config.speechModel
-	if (config.textModel || noModelConfigured) {
-		modelValidationPromises.textModel = validateModelComponents(
-			config.textModel || {},
-		)
-	}
-	if (config.visionModel) {
-		modelValidationPromises.visionModel = validateModelComponents(
-			config.visionModel,
-		)
-	}
-	if (config.speechModel) {
-		modelValidationPromises.speechModel = validateModelComponents(
-			config.speechModel,
-		)
-	}
-
-	await Promise.all(Object.values(modelValidationPromises))
-	const validationErrors: ModelValidationErrors = {}
-	const textModelErrors = await modelValidationPromises.textModel
-	if (textModelErrors && Object.keys(textModelErrors).length) {
-		validationErrors.textModel = textModelErrors
-	}
-	const visionModelErrors = await modelValidationPromises.visionModel
-	if (visionModelErrors && Object.keys(visionModelErrors).length) {
-		validationErrors.visionModel = visionModelErrors
-	}
-	const speechModelErrors = await modelValidationPromises.speechModel
-	if (speechModelErrors && Object.keys(speechModelErrors).length) {
-		validationErrors.speechModel = speechModelErrors
-	}
-
-	if (Object.keys(validationErrors).length > 0) {
-		return {
-			message: 'failed to load model components',
-			errors: validationErrors,
-		}
-	}
-	return undefined
 }
 
 export async function prepareModel(
-	{ config, log, modelsPath }: EngineContext<TransformersJsModelConfig>,
+	{ config, log }: EngineContext<TransformersJsModelConfig>,
 	onProgress?: (progress: FileDownloadProgress) => void,
 	signal?: AbortSignal,
 ) {
-	if (!didConfigureEnvironment && modelsPath) {
-		configureEnvironment(modelsPath)
+	if (!didConfigureEnvironment) {
+		configureEnvironment(config.modelsPath)
 	}
 	fs.mkdirSync(config.location, { recursive: true })
-	const clearFileLock = await acquireFileLock(config.location + '/', signal)
+	const releaseFileLocks = await acquireModelFileLocks(config, signal)
 	if (signal?.aborted) {
+		releaseFileLocks()
 		return
 	}
 	log(LogLevels.info, `Preparing transformers.js model at ${config.location}`, {
 		model: config.id,
 	})
-	if (!config.url) {
-		throw new Error(`Missing URL for model ${config.id}`)
-	}
-
-	const { modelId, branch } = parseModelUrl(config.url)
-	const modelFiles: ModelFile[] = []
-	const configMeta: any = {}
-	const downloadedFileSet = new Set<string>()
 
 	const downloadModelFiles = async (
 		modelOpts: TransformersJsModel,
+		{ modelId, branch }: { modelId: string; branch: string },
 		requiredComponents: string[] = ['model', 'tokenizer', 'processor'],
 	) => {
 		const modelClass = modelOpts.modelClass ?? AutoModel
 		const downloadPromises: Record<string, Promise<any> | undefined> = {}
-		const progressCallback = (progress: any) => {
+		const progressCallback = (progress: TransformersJsDownloadProgress) => {
 			if (onProgress && progress.status === 'progress') {
-				downloadedFileSet.add(progress.file)
 				onProgress({
-					file: env.cacheDir + modelId + '/' + progress.file,
+					file: env.cacheDir + progress.name + '/' + progress.file,
 					loadedBytes: progress.loaded,
 					totalBytes: progress.total,
 				})
@@ -339,9 +220,7 @@ export async function prepareModel(
 			downloadPromises.model = modelDownloadPromise
 		}
 		if (requiredComponents.includes('tokenizer')) {
-			const hasTokenizer = await remoteFileExists(
-				`${config.url}/blob/${branch}/tokenizer.json`,
-			)
+			const hasTokenizer = await remoteFileExists(`${config.url}/blob/${branch}/tokenizer.json`)
 			if (hasTokenizer) {
 				const tokenizerClass = modelOpts.tokenizerClass ?? AutoTokenizer
 				const tokenizerDownload = tokenizerClass.from_pretrained(modelId, {
@@ -354,8 +233,8 @@ export async function prepareModel(
 		}
 
 		if (requiredComponents.includes('processor')) {
-			if (modelOpts.processor) {
-				const { modelId, branch } = parseModelUrl(modelOpts.processor.url)
+			if (modelOpts.processor?.url) {
+				const { modelId, branch } = parseHuggingfaceModelIdAndBranch(modelOpts.processor.url)
 				const processorDownload = AutoProcessor.from_pretrained(modelId, {
 					revision: branch,
 					progress_callback: progressCallback,
@@ -363,12 +242,8 @@ export async function prepareModel(
 				downloadPromises.processor = processorDownload
 			} else {
 				const [hasProcessor, hasPreprocessor] = await Promise.all([
-					remoteFileExists(
-						`${config.url}/blob/${branch}/processor_config.json`,
-					),
-					remoteFileExists(
-						`${config.url}/blob/${branch}/preprocessor_config.json`,
-					),
+					remoteFileExists(`${config.url}/blob/${branch}/processor_config.json`),
+					remoteFileExists(`${config.url}/blob/${branch}/preprocessor_config.json`),
 				])
 				if (hasProcessor || hasPreprocessor) {
 					const processorDownload = AutoProcessor.from_pretrained(modelId, {
@@ -386,53 +261,57 @@ export async function prepareModel(
 			modelComponents.model = (await downloadPromises.model) as PreTrainedModel
 		}
 		if (downloadPromises.tokenizer) {
-			modelComponents.tokenizer =
-				(await downloadPromises.tokenizer) as PreTrainedTokenizer
+			modelComponents.tokenizer = (await downloadPromises.tokenizer) as PreTrainedTokenizer
 		}
 		if (downloadPromises.processor) {
-			modelComponents.processor =
-				(await downloadPromises.processor) as Processor
+			modelComponents.processor = (await downloadPromises.processor) as Processor
 		}
 		return modelComponents
 	}
 
-	const downloadModel = async (validationResult: ModelFileValidationResult) => {
-		log(
-			LogLevels.info,
-			`${validationResult.message} - Downloading model files`,
-			{
-				model: config.id,
-				url: config.url,
-				location: config.location,
-				errors: validationResult.errors,
-			},
-		)
+	const downloadModel = async (validationResult: ModelValidationResult) => {
+		log(LogLevels.info, `${validationResult.message} - Downloading model files`, {
+			model: config.id,
+			url: config.url,
+			location: config.location,
+			errors: validationResult.errors,
+		})
 		const modelDownloadPromises = []
-		const noModelConfigured =
-			!config.textModel && !config.visionModel && !config.speechModel
+		if (!config.url) {
+			throw new Error(`Missing URL for model ${config.id}`)
+		}
+		const { modelId, branch } = parseHuggingfaceModelIdAndBranch(config.url)
+		const directoriesToMove: Record<string, string> = {}
+		const modelCacheDir = path.join(env.cacheDir, modelId)
+		directoriesToMove[modelCacheDir] = config.location
+		const noModelConfigured = !config.textModel && !config.visionModel && !config.speechModel
 		if (config.textModel || noModelConfigured) {
 			const requiredComponents = validationResult.errors?.textModel
 				? Object.keys(validationResult.errors.textModel)
 				: undefined
-			modelDownloadPromises.push(
-				downloadModelFiles(config.textModel || {}, requiredComponents),
-			)
+			modelDownloadPromises.push(downloadModelFiles(config.textModel || {}, { modelId, branch }, requiredComponents))
 		}
 		if (config.visionModel) {
 			const requiredComponents = validationResult.errors?.visionModel
 				? Object.keys(validationResult.errors.visionModel)
 				: undefined
-			modelDownloadPromises.push(
-				downloadModelFiles(config.visionModel, requiredComponents),
-			)
+			modelDownloadPromises.push(downloadModelFiles(config.visionModel, { modelId, branch }, requiredComponents))
+			if (config.visionModel.processor?.url) {
+				const processorPath = resolveModelFileLocation({
+					url: config.visionModel.processor.url,
+					filePath: config.visionModel.processor.file,
+					modelsPath: config.modelsPath,
+				})
+				const { modelId } = parseHuggingfaceModelIdAndBranch(config.visionModel.processor.url)
+				const processorCacheDir = path.join(env.cacheDir, modelId)
+				directoriesToMove[processorCacheDir] = processorPath
+			}
 		}
 		if (config.speechModel) {
 			const requiredComponents = validationResult.errors?.speechModel
 				? Object.keys(validationResult.errors.speechModel)
 				: undefined
-			modelDownloadPromises.push(
-				downloadModelFiles(config.speechModel, requiredComponents),
-			)
+			modelDownloadPromises.push(downloadModelFiles(config.speechModel, { modelId, branch }, requiredComponents))
 		}
 		const models = await Promise.all(modelDownloadPromises)
 		for (const modelComponents of models) {
@@ -441,32 +320,34 @@ export async function prepareModel(
 		if (signal?.aborted) {
 			return
 		}
-		const modelCacheDir = path.join(env.cacheDir, modelId)
-		await copyDirectory(modelCacheDir, config.location)
+		await Promise.all(Object.entries(directoriesToMove).map(([from, to]) => fs.promises.rename(from, to)))
 	}
 
 	try {
-		const validationResults = await validateModelFiles(config)
-		if (signal?.aborted) {
-			return
+	const validationResults = await validateModelFiles(config)
+	if (signal?.aborted) {
+		releaseFileLocks()
+		return
+	}
+	if (validationResults) {
+		if (config.url) {
+			await downloadModel(validationResults)
+		} else {
+			throw new Error(`Model files are invalid: ${validationResults.message}`)
 		}
-		if (validationResults) {
-			if (config.url) {
-				await downloadModel(validationResults)
-			} else {
-				throw new Error(`Model files are invalid: ${validationResults.message}`)
-			}
-		}
+	}
 	} catch (err) {
-		clearFileLock()
+		releaseFileLocks()
 		throw err
 	}
-
-	const files = fs.readdirSync(config.location, { recursive: true })
-	for (const file of files) {
-		const targetFile = path.join(config.location, file.toString())
+	const configMeta: Record<string, any> = {}
+	const fileList: ModelFile[] = []
+	const modelFiles = fs.readdirSync(config.location, { recursive: true })
+	
+	const pushFile = (file: string) => {
+		const targetFile = path.join(config.location, file)
 		const targetStat = fs.statSync(targetFile)
-		modelFiles.push({
+		fileList.push({
 			file: targetFile,
 			size: targetStat.size,
 		})
@@ -475,45 +356,45 @@ export async function prepareModel(
 			configMeta[key] = JSON.parse(fs.readFileSync(targetFile, 'utf8'))
 		}
 	}
+	for (const file of modelFiles) {
+		pushFile(file.toString())
+	}
+	
+	if (config.visionModel?.processor) {
+		const processorPath = resolveModelFileLocation({
+			url: config.visionModel.processor.url,
+			filePath: config.visionModel.processor.file,
+			modelsPath: config.modelsPath,
+		})
+		const processorFiles = fs.readdirSync(processorPath, { recursive: true })
+		for (const file of processorFiles) {
+			pushFile(file.toString())
+		}
+	}
 
-	clearFileLock()
+	releaseFileLocks()
 	return {
 		files: modelFiles,
 		...configMeta,
 	}
 }
 
-export async function createInstance(
-	{ config, log }: EngineContext<TransformersJsModelConfig>,
-	signal?: AbortSignal,
-) {
-	let modelPath = config.location
-	if (!modelPath.endsWith('/')) {
-		modelPath += '/'
-	}
-
+export async function createInstance({ config, log }: EngineContext<TransformersJsModelConfig>, signal?: AbortSignal) {
 	const modelLoadPromises = []
-	const noModelConfigured =
-		!config.textModel && !config.visionModel && !config.speechModel
+	const noModelConfigured = !config.textModel && !config.visionModel && !config.speechModel
 
 	if (config.textModel || noModelConfigured) {
-		modelLoadPromises.push(
-			loadModelComponents(config.textModel || {}, config, modelPath),
-		)
+		modelLoadPromises.push(loadModelComponents(config.textModel || {}, config))
 	} else {
 		modelLoadPromises.push(Promise.resolve(undefined))
 	}
 	if (config.visionModel) {
-		modelLoadPromises.push(
-			loadModelComponents(config.visionModel, config, modelPath),
-		)
+		modelLoadPromises.push(loadModelComponents(config.visionModel, config))
 	} else {
 		modelLoadPromises.push(Promise.resolve(undefined))
 	}
 	if (config.speechModel) {
-		modelLoadPromises.push(
-			loadModelComponents(config.speechModel, config, modelPath),
-		)
+		modelLoadPromises.push(loadModelComponents(config.speechModel, config))
 	} else {
 		modelLoadPromises.push(Promise.resolve(undefined))
 	}
@@ -549,12 +430,7 @@ export async function disposeInstance(instance: TransformersJsInstance) {
 }
 
 export async function processTextCompletionTask(
-	{
-		request,
-		config,
-		log,
-		onChunk,
-	}: EngineTextCompletionArgs<TransformersJsModelConfig>,
+	{ request, config, log, onChunk }: EngineTextCompletionArgs<TransformersJsModelConfig>,
 	instance: TransformersJsInstance,
 	signal?: AbortSignal,
 ): Promise<EngineTextCompletionResult> {
@@ -596,19 +472,18 @@ export async function processEmbeddingTask(
 		throw new Error('Input is required for embedding.')
 	}
 	const inputs = Array.isArray(request.input) ? request.input : [request.input]
-	const normalizedInputs: Array<TextEmbeddingInput | ImageEmbeddingInput> =
-		inputs.map((input) => {
-			if (typeof input === 'string') {
-				return {
-					type: 'text',
-					content: input,
-				}
-			} else if (input.type) {
-				return input
-			} else {
-				throw new Error('Invalid input type')
+	const normalizedInputs: Array<TextEmbeddingInput | ImageEmbeddingInput> = inputs.map((input) => {
+		if (typeof input === 'string') {
+			return {
+				type: 'text',
+				content: input,
 			}
-		})
+		} else if (input.type) {
+			return input
+		} else {
+			throw new Error('Invalid input type')
+		}
+	})
 
 	const embeddings: Float32Array[] = []
 	let inputTokens = 0
@@ -654,21 +529,11 @@ export async function processEmbeddingTask(
 			if (!instance.visionModel?.processor || !instance.visionModel?.model) {
 				throw new Error('Vision model is not loaded.')
 			}
-			const { data, info } = await embeddingInput.content.handle
-				.raw()
-				.toBuffer({ resolveWithObject: true })
-			const image = new RawImage(
-				new Uint8ClampedArray(data),
-				info.width,
-				info.height,
-				info.channels,
-			)
+			const { data, info } = await embeddingInput.content.handle.raw().toBuffer({ resolveWithObject: true })
+			const image = new RawImage(new Uint8ClampedArray(data), info.width, info.height, info.channels)
 			modelInputs = await instance.visionModel.processor!(image)
 			const modelOutputs = await instance.visionModel.model(modelInputs)
-			result =
-				modelOutputs.last_hidden_state ??
-				modelOutputs.logits ??
-				modelOutputs.image_embeds
+			result = modelOutputs.last_hidden_state ?? modelOutputs.logits ?? modelOutputs.image_embeds
 		}
 
 		if (request.pooling) {
@@ -695,15 +560,8 @@ export async function processImageToTextTask(
 	if (!request.image) {
 		throw new Error('No image provided')
 	}
-	const { data, info } = await request.image.handle
-		.raw()
-		.toBuffer({ resolveWithObject: true })
-	const image = new RawImage(
-		new Uint8ClampedArray(data),
-		info.width,
-		info.height,
-		info.channels,
-	)
+	const { data, info } = await request.image.handle.raw().toBuffer({ resolveWithObject: true })
+	const image = new RawImage(new Uint8ClampedArray(data), info.width, info.height, info.channels)
 
 	if (signal?.aborted) {
 		return

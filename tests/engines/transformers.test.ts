@@ -1,7 +1,7 @@
 import { suite, test, expect, beforeAll, afterAll } from 'vitest'
 import { ModelServer } from '#package/server.js'
 import { cosineSimilarity } from '#package/lib/math.js'
-import { loadImageFromFile } from '#package/lib/images.js'
+import { loadImageFromFile } from '#package/lib/loadImage.js'
 import {
 	CLIPTextModelWithProjection,
 	CLIPVisionModelWithProjection,

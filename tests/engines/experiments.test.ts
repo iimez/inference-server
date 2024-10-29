@@ -10,6 +10,7 @@ import {
 import { ChatWithVisionEngine } from '#package/experiments/ChatWithVision.js'
 import { VoiceFunctionCallEngine } from '#package/experiments/VoiceFunctionCall.js'
 import { createChatCompletion } from '../util'
+import { loadImageFromUrl } from '#package/lib/loadImage.js'
 
 suite('chat with vision', () => {
 	// florence2 generates a description of the image and passes it to phi3
@@ -61,13 +62,16 @@ suite('chat with vision', () => {
 	})
 
 	it('can see', async () => {
+		const image = await loadImageFromUrl(
+			'https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/car.jpg?download=true'
+		)
 		const messages: ChatMessage[] = [
 			{
 				role: 'user',
 				content: [
 					{
 						type: 'image',
-						url: 'https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/car.jpg?download=true',
+						image,
 					},
 					{
 						type: 'text',

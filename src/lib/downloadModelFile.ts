@@ -1,20 +1,18 @@
 import { downloadFile as createFileDownload } from 'ipull'
 import fs from 'node:fs'
+import path from 'node:path'
 import { FileDownloadProgress } from '#package/types/index.js'
+import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
 
 interface DownloadArgs {
 	url: string
-	file: string
+	filePath?: string
+	modelsPath: string
 	onProgress?: (progress: FileDownloadProgress) => void
 	signal?: AbortSignal
 }
 
-export async function downloadModelFile({
-	url,
-	file,
-	onProgress,
-	signal,
-}: DownloadArgs) {
+export async function downloadModelFile({ url, filePath, modelsPath, onProgress, signal }: DownloadArgs) {
 	let downloadUrl = url
 	const parsedUrl = new URL(url)
 	if (parsedUrl.hostname === 'huggingface.co') {
@@ -29,20 +27,28 @@ export async function downloadModelFile({
 			downloadUrl = newUrl.href
 		}
 	}
+
+	const destinationFile = resolveModelFileLocation({
+		url: downloadUrl,
+		filePath,
+		modelsPath,
+	})
+
+	fs.mkdirSync(path.dirname(destinationFile), { recursive: true })
 	const controller = await createFileDownload({
 		url: downloadUrl,
-		savePath: file,
+		savePath: destinationFile,
 		skipExisting: true,
 	})
-	
+
 	let partialBytes = 0
-	if (fs.existsSync(file)) {
-		partialBytes = fs.statSync(file).size
+	if (fs.existsSync(destinationFile)) {
+		partialBytes = fs.statSync(destinationFile).size
 	}
 	const progressInterval = setInterval(() => {
 		if (onProgress) {
 			onProgress({
-				file: file,
+				file: destinationFile,
 				loadedBytes: controller.status.transferredBytes + partialBytes,
 				totalBytes: controller.status.totalBytes,
 			})

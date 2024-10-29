@@ -23,8 +23,8 @@ import {
 	ImageToImageRequest,
 } from '#package/types/index.js'
 import { Logger, LogLevel, createSublogger, LogLevels } from '#package/lib/logger.js'
-import { resolveModelLocation } from '#package/lib/resolveModelLocation.js'
-import { validateModelOptions } from '#package/lib/validation.js'
+import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
+import { validateModelOptions } from '#package/lib/validateModelOptions.js'
 
 export interface ModelServerOptions {
 	engines?: Record<string, ModelEngine>
@@ -64,7 +64,8 @@ export class ModelServer {
 					id: modelId,
 					minInstances: 0,
 					maxInstances: 1,
-					location: resolveModelLocation(modelsPath, builtInModelOptions),
+					modelsPath,
+					location: resolveModelFileLocation({ url: builtInModelOptions.url, filePath: builtInModelOptions.location, modelsPath }),
 					...builtInModelOptions,
 				}
 			} else {
@@ -73,6 +74,7 @@ export class ModelServer {
 					id: modelId,
 					minInstances: 0,
 					maxInstances: 1,
+					modelsPath,
 					...customEngineOptions,
 				}
 			}
@@ -154,7 +156,7 @@ export class ModelServer {
 			this.pool.init(this.engines),
 		])
 	}
-	
+
 	async stop() {
 		this.log(LogLevels.info, 'Stopping model server')
 		this.pool.queue.clear()
@@ -231,7 +233,7 @@ export class ModelServer {
 		await lock.release()
 		return result
 	}
-	
+
 	async processImageToTextTask(
 		args: ImageToTextRequest,
 		options?: ProcessingOptions,
@@ -253,7 +255,7 @@ export class ModelServer {
 		await lock.release()
 		return result
 	}
-	
+
 	async processTextToImageTask(
 		args: TextToImageRequest,
 		options?: ProcessingOptions,
@@ -264,7 +266,7 @@ export class ModelServer {
 		await lock.release()
 		return result
 	}
-	
+
 	async processImageToImageTask(
 		args: ImageToImageRequest,
 		options?: ProcessingOptions,

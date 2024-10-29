@@ -39,6 +39,7 @@ export interface ModelOptionsBase {
 	prepare?: 'blocking' | 'async' | 'on-demand'
 	minInstances?: number
 	maxInstances?: number
+	location?: string
 }
 
 export interface BuiltInModelOptionsBase extends ModelOptionsBase {
@@ -52,6 +53,7 @@ export interface ModelConfigBase extends ModelOptionsBase {
 	id: string
 	minInstances: number
 	maxInstances: number
+	modelsPath: string
 }
 
 export interface ModelConfig extends ModelConfigBase {
@@ -59,8 +61,8 @@ export interface ModelConfig extends ModelConfigBase {
 	location?: string
 	task: ModelTaskType | (string & {})
 	engine: BuiltInEngineName | (string & {})
-	minInstances: number
-	maxInstances: number
+	// minInstances: number
+	// maxInstances: number
 	ttl?: number
 	prefix?: string
 	initialMessages?: ChatMessage[]
@@ -93,8 +95,6 @@ export interface Image {
 	channels: 1 | 2 | 3 | 4
 }
 
-// export type Image = Sharp
-
 export interface CompletionProcessingOptions extends ProcessingOptions {
 	onChunk?: (chunk: CompletionChunk) => void
 }
@@ -109,7 +109,6 @@ export interface EngineContext<
 > {
 	config: TModelConfig
 	meta?: TModelMeta
-	modelsPath?: string
 	log: Logger
 }
 
@@ -136,8 +135,6 @@ export interface TextEmbeddingInput {
 export interface ImageEmbeddingInput {
 	type: 'image'
 	content: Image
-	// url?: string
-	// file?: string
 }
 
 export type EmbeddingInput = TextEmbeddingInput | ImageEmbeddingInput | string
@@ -345,7 +342,6 @@ interface LlamaCppModelOptionsBase extends BuiltInModelOptionsBase {
 	engine: 'node-llama-cpp'
 	task: 'text-completion' | 'embedding'
 	sha256?: string
-	file?: string
 	batchSize?: number
 	contextShiftStrategy?: ContextShiftStrategy
 	tools?: {
@@ -376,7 +372,6 @@ export interface LlamaCppTextCompletionModelOptions
 interface GPT4AllModelOptions extends BuiltInModelOptionsBase {
 	engine: 'gpt4all'
 	task: 'text-completion' | 'embedding'
-	file?: string
 	md5?: string
 	device?: {
 		gpu?: boolean | 'auto' | (string & {})
@@ -392,7 +387,8 @@ type GPT4AllEmbeddingModelOptions = GPT4AllModelOptions & EmbeddingModelOptions
 
 export interface TransformersJsModel {
 	processor?: {
-  	url: string
+  	url?: string
+		file?: string
 	}
 	processorClass?: TransformersJsProcessorClass
 	tokenizerClass?: TransformersJsTokenizerClass

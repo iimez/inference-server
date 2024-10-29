@@ -107,7 +107,7 @@ export async function prepareModel(
 	signal?: AbortSignal,
 ) {
 	fs.mkdirSync(path.dirname(config.location), { recursive: true })
-	const clearFileLock = await acquireFileLock(config.location, signal)
+	const releaseFileLock = await acquireFileLock(config.location, signal)
 	log(LogLevels.info, `Preparing node-llama-cpp model at ${config.location}`, {
 		model: config.id,
 	})
@@ -153,6 +153,7 @@ export async function prepareModel(
 	if (config.sha256) {
 		postDownloadPromises.push(calculateFileChecksum(config.location, 'sha256'))
 	}
+	
 	try {
 		const [gguf, fileHash] = await Promise.all(postDownloadPromises)
 		if (config.sha256 && fileHash !== config.sha256) {
@@ -160,12 +161,11 @@ export async function prepareModel(
 				`Model sha256 checksum mismatch: expected ${config.sha256} got ${fileHash} for ${config.location}`,
 			)
 		}
-		clearFileLock()
 		return {
 			gguf,
 		}
 	} catch (err) {
-		clearFileLock()
+		releaseFileLock()
 		throw err
 	}
 }

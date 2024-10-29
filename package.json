@@ -89,6 +89,7 @@
 		"p-queue": "^8.0.1",
 		"pretty-bytes": "^6.1.1",
 		"pretty-ms": "^9.1.0",
+		"proper-lockfile": "^4.1.2",
 		"sharp": "^0.33.5"
 	},
 	"devDependencies": {
@@ -97,6 +98,7 @@
 		"@types/cors": "^2.8.17",
 		"@types/express": "^5.0.0",
 		"@types/node": "^22.8.1",
+		"@types/proper-lockfile": "^4.1.4",
 		"@types/supertest": "^6.0.2",
 		"cross-env": "^7.0.3",
 		"gpt4all": "^4.0.0",

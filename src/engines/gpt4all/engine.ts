@@ -48,7 +48,6 @@ export interface GPT4AllModelConfig extends ModelConfig {
 	contextSize?: number
 	batchSize?: number
 	task: 'text-completion' | 'embedding'
-	// preload?: TextCompletionPreloadOptions
 	initialMessages?: ChatMessage[]
 	completionDefaults?: TextCompletionParams
 	device?: {
@@ -66,8 +65,9 @@ export async function prepareModel(
 	signal?: AbortSignal,
 ) {
 	fs.mkdirSync(path.dirname(config.location), { recursive: true })
-	const clearFileLock = await acquireFileLock(config.location, signal)
+	const releaseFileLock = await acquireFileLock(config.location)
 	if (signal?.aborted) {
+		await releaseFileLock()
 		return
 	}
 	log(LogLevels.info, `Preparing gpt4all model at ${config.location}`, {
@@ -110,21 +110,28 @@ export async function prepareModel(
 		})
 		await downloadModelFile({
 			url: config.url,
-			file: config.location,
+			filePath: config.location,
+			modelsPath: config.modelsPath,
 			onProgress,
 			signal,
 		})
 	}
-
-	if (!signal?.aborted) {
+	
+	if (signal?.aborted) {
+		await releaseFileLock()
+		return
+	}
+	try {
 		if (config.md5) {
 			await verifyModelFile(config.location, config.md5)
 		} else if (modelMeta?.md5sum) {
 			await verifyModelFile(config.location, modelMeta.md5sum)
 		}
+		return modelMeta
+	} catch (error) {
+		await releaseFileLock()
+		throw error
 	}
-	clearFileLock()
-	return modelMeta
 }
 
 export async function createInstance(

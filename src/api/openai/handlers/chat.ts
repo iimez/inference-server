@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { OpenAI } from 'openai'
+import { ChatCompletionMessageParam } from 'openai/resources/chat/completions.js'
 import type { ModelServer } from '#package/server.js'
 import {
 	ChatCompletionRequest,
@@ -10,9 +11,8 @@ import {
 } from '#package/types/index.js'
 import { parseJSONRequestBody } from '#package/api/parseJSONRequestBody.js'
 import { omitEmptyValues } from '#package/lib/util.js'
+import { loadImageFromUrl } from '#package/lib/loadImage.js'
 import { finishReasonMap, messageRoleMap } from '../enums.js'
-import { ChatCompletionMessageParam } from 'openai/resources/chat/completions.js'
-import { loadImageFromUrl } from '#package/lib/images.js'
 
 interface OpenAIChatCompletionParams
 	extends Omit<OpenAI.ChatCompletionCreateParamsStreaming, 'stream'> {

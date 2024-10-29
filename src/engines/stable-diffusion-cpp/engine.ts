@@ -1,4 +1,4 @@
-import * as StableDiffusion from '@lmagder/node-stable-diffusion-cpp'
+import StableDiffusion from '@lmagder/node-stable-diffusion-cpp'
 import { gguf } from '@huggingface/gguf'
 import sharp from 'sharp'
 import fs from 'node:fs'
@@ -15,14 +15,12 @@ import {
 } from '#package/types/index.js'
 import { LogLevel, LogLevels } from '#package/lib/logger.js'
 import { downloadModelFile } from '#package/lib/downloadModelFile.js'
+import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
 import { acquireFileLock } from '#package/lib/acquireFileLock.js'
-import { calculateFileChecksum } from '#package/lib/calculateFileChecksum.js'
 import { getRandomNumber } from '#package/lib/util.js'
-import {
-	StableDiffusionSamplingMethod,
-	StableDiffusionSchedule,
-	StableDiffusionWeightType,
-} from './types.js'
+import { StableDiffusionSamplingMethod, StableDiffusionSchedule, StableDiffusionWeightType } from './types.js'
+import { validateModelFiles, ModelValidationResult } from './validateModelFiles.js'
+import { parseQuantization, getWeightType, getSamplingMethod } from './util.js'
 
 export interface StableDiffusionInstance {
 	context: StableDiffusion.Context
@@ -55,187 +53,93 @@ interface StableDiffusionModelMeta {
 
 export const autoGpu = true
 
-function getModelFileName(opts: ModelFileSource) {
-	if (opts.url) {
-		const parsedUrl = new URL(opts.url)
-		return path.basename(parsedUrl.pathname)
-	}
-	if (opts.file) {
-		return path.basename(opts.file)
-	}
-	throw new Error('Invalid file options')
-}
-
-async function validateModelFiles(config: StableDiffusionModelConfig) {
-	if (!fs.existsSync(config.location)) {
-		return 'model file missing'
-	}
-
-	const ipullFile = config.location + '.ipull'
-	if (fs.existsSync(ipullFile)) {
-		return 'pending download'
-	}
-
-	const modelDir = path.dirname(config.location)
-	const validateFile = async (name: string, src: ModelFileSource) => {
-		const file = path.join(modelDir, getModelFileName(src))
-		if (!fs.existsSync(file)) {
-			return `${name} file missing at ${file}`
-		}
-		if (src.sha256) {
-			const fileHash = await calculateFileChecksum(file, 'sha256')
-			if (fileHash !== src.sha256) {
-				return `file sha256 checksum mismatch: expected ${src.sha256} got ${fileHash} in ${file}`
-			}
-		}
-		return undefined
-	}
-	if (config.clipL) {
-		const clipLError = await validateFile('clipL', config.clipL)
-		if (clipLError) {
-			return clipLError
-		}
-	}
-	if (config.clipG) {
-		const clipGError = await validateFile('clipG', config.clipG)
-		if (clipGError) {
-			return clipGError
-		}
-	}
-	if (config.vae) {
-		const vaeError = await validateFile('vae', config.vae)
-		if (vaeError) {
-			return vaeError
-		}
-	}
-	if (config.t5xxl) {
-		const t5xxlError = await validateFile('t5xxl', config.t5xxl)
-		if (t5xxlError) {
-			return t5xxlError
-		}
-	}
-	if (config.controlNet) {
-		const controlNetError = await validateFile('controlNet', config.controlNet)
-		if (controlNetError) {
-			return controlNetError
-		}
-	}
-	if (config.taesd) {
-		const taesdError = await validateFile('taesd', config.taesd)
-		if (taesdError) {
-			return taesdError
-		}
-	}
-
-	if (config.sha256) {
-		const fileHash = await calculateFileChecksum(config.location, 'sha256')
-		if (fileHash !== config.sha256) {
-			return `model file sha256 checksum mismatch: expected ${config.sha256} got ${fileHash}`
-		}
-	}
-
-	const loraDir = path.join(path.dirname(config.location), 'lora')
-	if (config.loras) {
-		for (const lora of config.loras) {
-			const loraFile = path.join(loraDir, getModelFileName(lora))
-			if (!fs.existsSync(loraFile)) {
-				return `lora file missing: ${loraFile}`
-			}
-		}
-	}
-
-	return undefined
-}
-
 export async function prepareModel(
-	{
-		config,
-		log,
-	}: EngineContext<StableDiffusionModelConfig, StableDiffusionModelMeta>,
+	{ config, log }: EngineContext<StableDiffusionModelConfig, StableDiffusionModelMeta>,
 	onProgress?: (progress: FileDownloadProgress) => void,
 	signal?: AbortSignal,
 ) {
 	fs.mkdirSync(path.dirname(config.location), { recursive: true })
-	const clearFileLock = await acquireFileLock(config.location, signal)
+	const releaseFileLock = await acquireFileLock(config.location)
 	if (signal?.aborted) {
+		await releaseFileLock()
 		return
 	}
-	log(
-		LogLevels.info,
-		`Preparing stable-diffusion model at ${config.location}`,
-		{
-			model: config.id,
-		},
-	)
+	log(LogLevels.info, `Preparing stable-diffusion model at ${config.location}`, {
+		model: config.id,
+	})
 
-	const downloadModel = (url: string, reason: string) => {
-		log(LogLevels.info, `${reason} - Downloading model files`, {
+	const downloadModel = (url: string, validationResult: ModelValidationResult) => {
+		log(LogLevels.info, `${validationResult.message} - Downloading model files`, {
 			model: config.id,
 			url: config.url,
 			location: config.location,
+			errors: validationResult.errors,
 		})
 		const downloadPromises = []
-		const modelDir = path.dirname(config.location)
-		downloadPromises.push(
-			downloadModelFile({
-				url: url,
-				file: config.location,
-				onProgress,
-				signal,
-			}),
-		)
-		const filesToDownload = [
-			config.clipL,
-			config.clipG,
-			config.vae,
-			config.t5xxl,
-			config.controlNet,
-			config.taesd,
-		]
-		for (const file of filesToDownload) {
-			if (!file?.url) {
-				continue
-			}
+		if (validationResult.errors.model && config.location) {
 			downloadPromises.push(
 				downloadModelFile({
-					url: file.url,
-					file: path.join(modelDir, getModelFileName(file)),
+					url: url,
+					filePath: config.location,
+					modelsPath: config.modelsPath,
 					onProgress,
 					signal,
 				}),
 			)
 		}
+		const pushDownload = (src: ModelFileSource) => {
+			if (!src.url) {
+				return
+			}
+			downloadPromises.push(
+				downloadModelFile({
+					url: src.url,
+					filePath: src.file,
+					modelsPath: config.modelsPath,
+					onProgress,
+					signal,
+				}),
+			)
+		}
+		if (validationResult.errors.clipG && config.clipG) {
+			pushDownload(config.clipG)
+		}
+		if (validationResult.errors.clipL && config.clipL) {
+			pushDownload(config.clipL)
+		}
+		if (validationResult.errors.vae && config.vae) {
+			pushDownload(config.vae)
+		}
+		if (validationResult.errors.t5xxl && config.t5xxl) {
+			pushDownload(config.t5xxl)
+		}
+		if (validationResult.errors.controlNet && config.controlNet) {
+			pushDownload(config.controlNet)
+		}
+		if (validationResult.errors.taesd && config.taesd) {
+			pushDownload(config.taesd)
+		}
 		if (config.loras) {
-			const loraDir = path.join(path.dirname(config.location), 'loras')
-			fs.mkdirSync(loraDir, { recursive: true })
 			for (const lora of config.loras) {
 				if (!lora.url) {
 					continue
 				}
-				downloadPromises.push(
-					downloadModelFile({
-						url: lora.url,
-						file: path.join(loraDir, getModelFileName(lora)),
-						onProgress,
-						signal,
-					}),
-				)
+				pushDownload(lora)
 			}
 		}
-
 		return Promise.all(downloadPromises)
 	}
 
 	try {
-		const validationError = await validateModelFiles(config)
+		const validationResults = await validateModelFiles(config)
 		if (signal?.aborted) {
 			return
 		}
-		if (validationError) {
+		if (validationResults) {
 			if (config.url) {
-				await downloadModel(config.url, validationError)
+				await downloadModel(config.url, validationResults)
 			} else {
-				throw new Error(`Model files are invalid: ${validationError}`)
+				throw new Error(`Model files are invalid: ${validationResults.message}`)
 			}
 		}
 
@@ -243,10 +147,8 @@ export async function prepareModel(
 		if (finalValidationError) {
 			throw new Error(`Model files are invalid: ${finalValidationError}`)
 		}
-		clearFileLock()
 
 		const result: any = {}
-
 		if (config.location.endsWith('.gguf')) {
 			const { metadata, tensorInfos } = await gguf(config.location, {
 				allowLocalFile: true,
@@ -254,115 +156,45 @@ export async function prepareModel(
 			result.gguf = metadata
 		}
 		return result
-	} catch (err) {
-		clearFileLock()
-		throw err
+	} catch (error) {
+		await releaseFileLock()
+		throw error
 	}
 }
 
-function parseQuantization(filename: string): string | null {
-	// Regular expressions to match different quantization patterns
-	const regexPatterns = [
-		/q(\d+)_(\d+)/i, // q4_0
-		/[-_\.](f16|f32|int8|int4)/i, // f16, f32, int8, int4
-		/[-_\.](fp16|fp32)/i, // fp16, fp32
-	]
-
-	for (const regex of regexPatterns) {
-		const match = filename.match(regex)
-		console.debug({
-			regex: regex.toString(),
-			match,
-		})
-		if (match) {
-			// If there's a match, return the full matched quantization string
-			// Remove leading dash if present, convert to uppercase
-			return match[0].replace(/^[-_]/, '').replace(/fp/i, 'f').toLowerCase()
-		}
-	}
-	return null
-}
-
-function getWeightType(key: string): number | undefined {
-	const weightKey = key.toUpperCase() as keyof typeof StableDiffusion.Type
-	if (weightKey in StableDiffusion.Type) {
-		return StableDiffusion.Type[weightKey]
-	}
-	console.warn('Unknown weight type', weightKey)
-	return undefined
-}
-
-function getSamplingMethod(
-	method?: string,
-): StableDiffusion.SampleMethod | undefined {
-	switch (method) {
-		case 'euler':
-			return StableDiffusion.SampleMethod.Euler
-		case 'euler_a':
-			return StableDiffusion.SampleMethod.EulerA
-		case 'lcm':
-			return StableDiffusion.SampleMethod.LCM
-		case 'heun':
-			return StableDiffusion.SampleMethod.Heun
-		case 'dpm2':
-			return StableDiffusion.SampleMethod.DPM2
-		case 'dpm++2s_a':
-			return StableDiffusion.SampleMethod.DPMPP2SA
-		case 'dpm++2m':
-			return StableDiffusion.SampleMethod.DPMPP2M
-		case 'dpm++2mv2':
-			return StableDiffusion.SampleMethod.DPMPP2Mv2
-		case 'ipndm':
-			// @ts-ignore
-			return StableDiffusion.SampleMethod.IPNDM
-		case 'ipndm_v':
-			// @ts-ignore
-			return StableDiffusion.SampleMethod.IPNDMV
-	}
-	console.warn('Unknown sampling method', method)
-	return undefined
-}
-
-export async function createInstance(
-	{ config, log }: EngineContext<StableDiffusionModelConfig>,
-	signal?: AbortSignal,
-) {
+export async function createInstance({ config, log }: EngineContext<StableDiffusionModelConfig>, signal?: AbortSignal) {
 	log(LogLevels.debug, 'Load Stable Diffusion model', config)
-
 	const handleLog = (level: string, message: string) => {
 		log(level as LogLevel, message)
 	}
 	const handleProgress = (step: number, steps: number, time: number) => {
 		log(LogLevels.debug, `Progress: ${step}/${steps} (${time}ms)`)
 	}
-	const modelDir = path.dirname(config.location)
-
-	// stable-diffusion.cpp example https://github.com/leejet/stable-diffusion.cpp/blob/14206fd48832ab600d9db75f15acb5062ae2c296/examples/cli/main.cpp#L766
-	// gpu/device https://github.com/search?q=repo%3Aleejet%2Fstable-diffusion.cpp+CUDA_VISIBLE_DEVICES&type=issues
-	// createContext https://github.com/lmagder/node-stable-diffusion.cpp/blob/b4c7bd7786320d2e1ce13763c31bc9e32c061a3e/src/NodeModule.cpp#L335
 
 	const vaeFilePath = config.vae
-		? path.join(modelDir, getModelFileName(config.vae))
+		? resolveModelFileLocation({ url: config.vae.url, filePath: config.vae.file, modelsPath: config.modelsPath })
 		: undefined
 	const clipLFilePath = config.clipL
-		? path.join(modelDir, getModelFileName(config.clipL))
+		? resolveModelFileLocation({ url: config.clipL.url, filePath: config.clipL.file, modelsPath: config.modelsPath })
 		: undefined
 	const clipGFilePath = config.clipG
-		? path.join(modelDir, getModelFileName(config.clipG))
+		? resolveModelFileLocation({ url: config.clipG.url, filePath: config.clipG.file, modelsPath: config.modelsPath })
 		: undefined
 	const t5xxlFilePath = config.t5xxl
-		? path.join(modelDir, getModelFileName(config.t5xxl))
+		? resolveModelFileLocation({ url: config.t5xxl.url, filePath: config.t5xxl.file, modelsPath: config.modelsPath })
 		: undefined
 	const controlNetFilePath = config.controlNet
-		? path.join(modelDir, getModelFileName(config.controlNet))
+		? resolveModelFileLocation({
+				url: config.controlNet.url,
+				filePath: config.controlNet.file,
+				modelsPath: config.modelsPath,
+		  })
 		: undefined
 	const taesdFilePath = config.taesd
-		? path.join(modelDir, getModelFileName(config.taesd))
+		? resolveModelFileLocation({ url: config.taesd.url, filePath: config.taesd.file, modelsPath: config.modelsPath })
 		: undefined
 
-	let weightType = config.weightType
-		? getWeightType(config.weightType)
-		: undefined
+	let weightType = config.weightType ? getWeightType(config.weightType) : undefined
 	if (typeof weightType === 'undefined') {
 		const quantization = parseQuantization(config.location)
 		if (quantization) {
@@ -371,7 +203,9 @@ export async function createInstance(
 	}
 
 	if (typeof weightType === 'undefined') {
-		throw new Error('Failed to determine weight type / quantization')
+		log(LogLevels.warn, 'Failed to parse model weight type (quantization) from file name, falling back to f32', {
+			file: config.location,
+		})
 	}
 
 	const loraDir = path.join(path.dirname(config.location), 'loras')
@@ -387,6 +221,10 @@ export async function createInstance(
 		taesd: taesdFilePath,
 		weightType: weightType,
 		loraDir: loraDir,
+		// TODO how to expose?
+		// keepClipOnCpu: true,
+		// keepControlNetOnCpu: true,
+		// keepVaeOnCpu: true,
 	}
 	log(LogLevels.debug, 'Creating context with', contextParams)
 	const context = await StableDiffusion.createContext(
@@ -413,9 +251,7 @@ export async function processTextToImageTask(
 		width: request.width || 512,
 		height: request.height || 512,
 		batchCount: request.batchCount,
-		sampleMethod: getSamplingMethod(
-			request.samplingMethod || config.samplingMethod,
-		),
+		sampleMethod: getSamplingMethod(request.samplingMethod || config.samplingMethod),
 		sampleSteps: request.sampleSteps,
 		cfgScale: request.cfgScale,
 		// @ts-ignore
@@ -473,9 +309,7 @@ export async function processImageToImageTask(
 		width: request.width || 512,
 		height: request.height || 512,
 		batchCount: request.batchCount,
-		sampleMethod: getSamplingMethod(
-			request.samplingMethod || config.samplingMethod,
-		),
+		sampleMethod: getSamplingMethod(request.samplingMethod || config.samplingMethod),
 		cfgScale: request.cfgScale,
 		sampleSteps: request.sampleSteps,
 		// @ts-ignore

@@ -13,9 +13,7 @@ export function omitEmptyValues<T extends Record<string, any>>(dict: T): T {
 	) as T
 }
 
-export function mergeAbortSignals(
-	signals: Array<AbortSignal | undefined>,
-): AbortSignal {
+export function mergeAbortSignals(signals: Array<AbortSignal | undefined>): AbortSignal {
 	const controller = new AbortController()
 	const onAbort = () => {
 		controller.abort()
@@ -36,10 +34,22 @@ export function getRandomNumber(min: number, max: number) {
 
 export function printActiveHandles() {
 	//@ts-ignore
-	const handles = process._getActiveHandles();
+	const handles = process._getActiveHandles()
 	//@ts-ignore
-	const requests = process._getActiveRequests();
+	const requests = process._getActiveRequests()
 
-	console.log('Active Handles:', inspect(handles, { depth: 1 }));
-	console.log('Active Requests:', inspect(requests, { depth: 1 }));
+	console.log('Active Handles:', inspect(handles, { depth: 1 }))
+	console.log('Active Requests:', inspect(requests, { depth: 1 }))
+}
+
+export function formatBytesPerSecond(speed: number) {
+	const units = ['B/s', 'KB/s', 'MB/s', 'GB/s', 'TB/s']
+	let unitIndex = 0
+
+	while (speed >= 1024 && unitIndex < units.length - 1) {
+		speed /= 1024
+		unitIndex++
+	}
+
+	return `${speed.toFixed(2)} ${units[unitIndex]}`
 }
