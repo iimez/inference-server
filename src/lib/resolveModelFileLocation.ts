@@ -40,7 +40,7 @@ export function resolveModelFileLocation({ url, filePath, modelsCachePath }: Res
 		// otherwise, use the hostname and last path segment
 		if (!destinationPath) {
 			const fileName = parsedUrl.pathname.split('/').pop()
-			destinationPath = `${modelsCachePath}/${parsedUrl.hostname}/${fileName}`
+			destinationPath = path.join(modelsCachePath, parsedUrl.hostname, fileName || '')
 		}
 		return destinationPath
 	}
