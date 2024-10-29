@@ -1,6 +1,6 @@
 {
 	"name": "lllms",
-	"version": "1.0.0-beta.18",
+	"version": "1.0.0-beta.19",
 	"description": "Libraries and server to build AI applications. Adapters to various native bindings allowing local inference. Integrate it with your application, or use as a microservice.",
 	"main": "dist/index.js",
 	"source": "src/index.ts",

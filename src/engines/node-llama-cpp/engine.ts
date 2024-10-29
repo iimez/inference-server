@@ -48,14 +48,10 @@ import {
 } from '#package/types/index.js'
 import { LogLevels } from '#package/lib/logger.js'
 import { flattenMessageTextContent } from '#package/lib/flattenMessageTextContent.js'
-import { calculateFileChecksum } from '#package/lib/calculateFileChecksum.js'
 import { acquireFileLock } from '#package/lib/acquireFileLock.js'
 import { getRandomNumber } from '#package/lib/util.js'
-import {
-	createChatMessageArray,
-	addFunctionCallToChatHistory,
-	mapFinishReason,
-} from './util.js'
+import { validateModelFile } from '#package/lib/validateModelFile.js'
+import { createChatMessageArray, addFunctionCallToChatHistory, mapFinishReason } from './util.js'
 import { LlamaChatResult } from './types.js'
 
 export interface NodeLlamaCppInstance {
@@ -108,20 +104,24 @@ export async function prepareModel(
 ) {
 	fs.mkdirSync(path.dirname(config.location), { recursive: true })
 	const releaseFileLock = await acquireFileLock(config.location, signal)
+
+	if (signal?.aborted) {
+		releaseFileLock()
+		return
+	}
 	log(LogLevels.info, `Preparing node-llama-cpp model at ${config.location}`, {
 		model: config.id,
 	})
-	if (!fs.existsSync(config.location)) {
-		if (!config.url) {
-			throw new Error(`Cannot download "${config.id}" - no URL configured`)
-		}
-		log(LogLevels.info, 'Downloading', {
+	const downloadModel = async (url: string, validationResult: string) => {
+		log(LogLevels.info, `Downloading model files`, {
 			model: config.id,
-			url: config.url,
+			url: url,
 			location: config.location,
+			error: validationResult,
 		})
+
 		const downloader = await createModelDownloader({
-			modelUrl: config.url,
+			modelUrl: url,
 			dirPath: path.dirname(config.location),
 			fileName: path.basename(config.location),
 			deleteTempFileOnCancel: false,
@@ -137,9 +137,28 @@ export async function prepareModel(
 		})
 		await downloader.download()
 	}
+	try {
+		if (signal?.aborted) {
+			return
+		}
 
-	const postDownloadPromises: Array<Promise<GgufFileInfo | string>> = [
-		readGgufFileInfo(config.location, {
+		const validationError = await validateModelFile(config)
+		if (signal?.aborted) {
+			return
+		}
+		if (validationError) {
+			if (config.url) {
+				await downloadModel(config.url, validationError)
+			} else {
+				throw new Error(`${validationError} - No URL provided`)
+			}
+		}
+
+		const finalValidationError = await validateModelFile(config)
+		if (finalValidationError) {
+			throw new Error(`Downloaded files are invalid: ${finalValidationError}`)
+		}
+		const gguf = await readGgufFileInfo(config.location, {
 			signal,
 			ignoreKeys: [
 				'gguf.tokenizer.ggml.merges',
@@ -147,33 +166,18 @@ export async function prepareModel(
 				'gguf.tokenizer.ggml.scores',
 				'gguf.tokenizer.ggml.token_type',
 			],
-		}),
-	]
-
-	if (config.sha256) {
-		postDownloadPromises.push(calculateFileChecksum(config.location, 'sha256'))
-	}
-	
-	try {
-		const [gguf, fileHash] = await Promise.all(postDownloadPromises)
-		if (config.sha256 && fileHash !== config.sha256) {
-			throw new Error(
-				`Model sha256 checksum mismatch: expected ${config.sha256} got ${fileHash} for ${config.location}`,
-			)
-		}
+		})
 		return {
 			gguf,
 		}
 	} catch (err) {
-		releaseFileLock()
 		throw err
+	} finally {
+		releaseFileLock()
 	}
 }
 
-export async function createInstance(
-	{ config, log }: EngineContext<NodeLlamaCppModelConfig>,
-	signal?: AbortSignal,
-) {
+export async function createInstance({ config, log }: EngineContext<NodeLlamaCppModelConfig>, signal?: AbortSignal) {
 	log(LogLevels.debug, 'Load Llama model', config.device)
 	// takes "auto" | "metal" | "cuda" | "vulkan"
 	const gpuSetting = (config.device?.gpu ?? 'auto') as LlamaOptions['gpu']
@@ -184,15 +188,9 @@ export async function createInstance(
 		logger: (level, message) => {
 			if (level === LlamaLogLevel.warn) {
 				log(LogLevels.warn, message)
-			} else if (
-				level === LlamaLogLevel.error ||
-				level === LlamaLogLevel.fatal
-			) {
+			} else if (level === LlamaLogLevel.error || level === LlamaLogLevel.fatal) {
 				log(LogLevels.error, message)
-			} else if (
-				level === LlamaLogLevel.info ||
-				level === LlamaLogLevel.debug
-			) {
+			} else if (level === LlamaLogLevel.info || level === LlamaLogLevel.debug) {
 				log(LogLevels.verbose, message)
 			}
 		},
@@ -211,10 +209,7 @@ export async function createInstance(
 				})
 			} else {
 				// assume input is a JSON schema object
-				llamaGrammars[key] = new LlamaJsonSchemaGrammar(
-					llama,
-					input as GbnfJsonSchema,
-				)
+				llamaGrammars[key] = new LlamaJsonSchemaGrammar(llama, input as GbnfJsonSchema)
 			}
 		}
 	}
@@ -258,10 +253,7 @@ export async function createInstance(
 
 		let inputFunctions: Record<string, ChatSessionModelFunction> | undefined
 
-		if (
-			config.tools?.definitions &&
-			Object.keys(config.tools.definitions).length > 0
-		) {
+		if (config.tools?.definitions && Object.keys(config.tools.definitions).length > 0) {
 			const functionDefs = config.tools.definitions
 			inputFunctions = {}
 			for (const functionName in functionDefs) {
@@ -274,14 +266,11 @@ export async function createInstance(
 			}
 		}
 
-		const loadMessagesRes = await chat.loadChatAndCompleteUserMessage(
-			initialChatHistory,
-			{
-				initialUserPrompt: '',
-				functions: inputFunctions,
-				documentFunctionParams: config.tools?.includeToolDocumentation,
-			},
-		)
+		const loadMessagesRes = await chat.loadChatAndCompleteUserMessage(initialChatHistory, {
+			initialUserPrompt: '',
+			functions: inputFunctions,
+			documentFunctionParams: config.tools?.includeToolDocumentation,
+		})
 
 		instance.chat = chat
 		instance.chatHistory = initialChatHistory
@@ -312,13 +301,7 @@ export async function disposeInstance(instance: NodeLlamaCppInstance) {
 }
 
 export async function processChatCompletionTask(
-	{
-		request,
-		config,
-		resetContext,
-		log,
-		onChunk,
-	}: EngineChatCompletionArgs<NodeLlamaCppModelConfig>,
+	{ request, config, resetContext, log, onChunk }: EngineChatCompletionArgs<NodeLlamaCppModelConfig>,
 	instance: NodeLlamaCppInstance,
 	signal?: AbortSignal,
 ): Promise<EngineChatCompletionResult> {
@@ -364,8 +347,7 @@ export async function processChatCompletionTask(
 	}
 	// setting up logit/token bias dictionary
 	let tokenBias: TokenBias | undefined
-	const completionTokenBias =
-		request.tokenBias ?? config.completionDefaults?.tokenBias
+	const completionTokenBias = request.tokenBias ?? config.completionDefaults?.tokenBias
 	if (completionTokenBias) {
 		tokenBias = new TokenBias(instance.model.tokenizer)
 		for (const key in completionTokenBias) {
@@ -387,18 +369,12 @@ export async function processChatCompletionTask(
 
 	// see if the user submitted any function call results
 	const supportsParallelFunctionCalling =
-		instance.chat.chatWrapper.settings.functions.parallelism != null &&
-		!!config.tools?.parallelism
+		instance.chat.chatWrapper.settings.functions.parallelism != null && !!config.tools?.parallelism
 	const resolvedFunctionCalls = []
-	const functionCallResultMessages = request.messages.filter(
-		(m) => m.role === 'tool',
-	) as ToolCallResultMessage[]
+	const functionCallResultMessages = request.messages.filter((m) => m.role === 'tool') as ToolCallResultMessage[]
 	for (const message of functionCallResultMessages) {
 		if (!instance.pendingFunctionCalls[message.callId]) {
-			log(
-				LogLevels.warn,
-				`Received function result for non-existing call id "${message.callId}`,
-			)
+			log(LogLevels.warn, `Received function result for non-existing call id "${message.callId}`)
 			continue
 		}
 		log(LogLevels.debug, 'Resolving pending function call', {
@@ -445,12 +421,8 @@ export async function processChatCompletionTask(
 		// use last message as prefill for response, if its an assistant message
 		assistantPrefill = flattenMessageTextContent(lastMessage.content)
 	} else if (!resolvedFunctionCalls.length) {
-		log(
-			LogLevels.warn,
-			'Tailing message is not valid for chat completion. This is likely a mistake.',
-			lastMessage,
-		)
-		throw new Error('Invalid tailing chat message')
+		log(LogLevels.warn, 'Last message is not valid for chat completion. This is likely a mistake.', lastMessage)
+		throw new Error('Invalid last chat message')
 	}
 
 	// only grammar or functions can be used, not both.
@@ -476,17 +448,11 @@ export async function processChatCompletionTask(
 		}
 	}
 	const defaults = config.completionDefaults ?? {}
-	let lastEvaluation: LlamaChatResponse['lastEvaluation'] | undefined =
-		instance.lastEvaluation
+	let lastEvaluation: LlamaChatResponse['lastEvaluation'] | undefined = instance.lastEvaluation
 	let newChatHistory = instance.chatHistory.slice()
-	let newContextWindowChatHistory = !lastEvaluation?.contextWindow
-		? undefined
-		: instance.chatHistory.slice()
+	let newContextWindowChatHistory = !lastEvaluation?.contextWindow ? undefined : instance.chatHistory.slice()
 
-	if (
-		instance.chatHistory[instance.chatHistory.length - 1].type !== 'model' ||
-		assistantPrefill
-	) {
+	if (instance.chatHistory[instance.chatHistory.length - 1].type !== 'model' || assistantPrefill) {
 		const newModelResponse = assistantPrefill ? [assistantPrefill] : []
 		newChatHistory.push({
 			type: 'model',
@@ -528,10 +494,7 @@ export async function processChatCompletionTask(
 			topP: request.topP ?? defaults.topP,
 			topK: request.topK ?? defaults.topK,
 			minP: request.minP ?? defaults.minP,
-			seed:
-				request.seed ??
-				config.completionDefaults?.seed ??
-				getRandomNumber(0, 1000000),
+			seed: request.seed ?? config.completionDefaults?.seed ?? getRandomNumber(0, 1000000),
 			tokenBias,
 			customStopTriggers,
 			trimWhitespaceSuffix: false,
@@ -580,13 +543,9 @@ export async function processChatCompletionTask(
 				evokableFunctionCalls.map(async (functionCall) => {
 					const functionDef = functionDefinitions[functionCall.functionName]
 					if (!functionDef) {
-						throw new Error(
-							`The model tried to call undefined function "${functionCall.functionName}"`,
-						)
+						throw new Error(`The model tried to call undefined function "${functionCall.functionName}"`)
 					}
-					const functionCallResult = await functionDef.handler!(
-						functionCall.params,
-					)
+					const functionCallResult = await functionDef.handler!(functionCall.params)
 					log(LogLevels.debug, 'Function handler resolved', {
 						function: functionCall.functionName,
 						args: functionCall.params,
@@ -625,9 +584,7 @@ export async function processChatCompletionTask(
 			}
 
 			// check if all function calls were immediately evokable
-			const remainingFunctionCalls = functionCalls.slice(
-				evokableFunctionCalls.length,
-			)
+			const remainingFunctionCalls = functionCalls.slice(evokableFunctionCalls.length)
 
 			if (remainingFunctionCalls.length === 0) {
 				// if yes, continue with generation
@@ -648,12 +605,8 @@ export async function processChatCompletionTask(
 		// no function calls happened, we got a model response.
 		instance.lastEvaluation = lastEvaluation
 		instance.chatHistory = newChatHistory
-		const lastMessage = instance.chatHistory[
-			instance.chatHistory.length - 1
-		] as ChatModelResponse
-		const responseText = lastMessage.response
-			.filter((item: any) => typeof item === 'string')
-			.join('')
+		const lastMessage = instance.chatHistory[instance.chatHistory.length - 1] as ChatModelResponse
+		const responseText = lastMessage.response.filter((item: any) => typeof item === 'string').join('')
 		completionResult = {
 			responseText,
 			stopReason: metadata.stopReason,
@@ -667,27 +620,23 @@ export async function processChatCompletionTask(
 	}
 
 	if (completionResult.functionCalls) {
-		// TODO its possible that there are tailing immediately-evaluatable function calls.
+		// TODO its possible that there are trailing immediately-evaluatable function calls.
 		// function call results need to be added in the order the functions were called, so
-		// we need to wait for the pending calls to complete before we can add the tailing calls.
+		// we need to wait for the pending calls to complete before we can add the trailing calls.
 		// as is, these may never resolve
-		const pendingFunctionCalls = completionResult.functionCalls.filter(
-			(call) => {
-				const functionDef = functionDefinitions[call.functionName]
-				return !functionDef.handler
-			},
-		)
+		const pendingFunctionCalls = completionResult.functionCalls.filter((call) => {
+			const functionDef = functionDefinitions[call.functionName]
+			return !functionDef.handler
+		})
 
 		// TODO write a test that triggers a parallel call to a deferred function and to an IE function
-		const tailingFunctionCalls = completionResult.functionCalls.filter(
-			(call) => {
-				const functionDef = functionDefinitions[call.functionName]
-				return functionDef.handler
-			},
-		)
-		if (tailingFunctionCalls.length) {
-			console.debug(tailingFunctionCalls)
-			log(LogLevels.warn, 'Tailing function calls not resolved')
+		const trailingFunctionCalls = completionResult.functionCalls.filter((call) => {
+			const functionDef = functionDefinitions[call.functionName]
+			return functionDef.handler
+		})
+		if (trailingFunctionCalls.length) {
+			console.debug(trailingFunctionCalls)
+			log(LogLevels.warn, 'Trailing function calls not resolved')
 		}
 
 		assistantMessage.toolCalls = pendingFunctionCalls.map((call) => {
@@ -706,9 +655,7 @@ export async function processChatCompletionTask(
 		})
 	}
 
-	const tokenDifference = instance.chat.sequence.tokenMeter.diff(
-		initialTokenMeterState,
-	)
+	const tokenDifference = instance.chat.sequence.tokenMeter.diff(initialTokenMeterState)
 	return {
 		finishReason: mapFinishReason(completionResult.stopReason),
 		message: assistantMessage,
@@ -719,13 +666,7 @@ export async function processChatCompletionTask(
 }
 
 export async function processTextCompletionTask(
-	{
-		request,
-		config,
-		resetContext,
-		log,
-		onChunk,
-	}: EngineTextCompletionArgs<NodeLlamaCppModelConfig>,
+	{ request, config, resetContext, log, onChunk }: EngineTextCompletionArgs<NodeLlamaCppModelConfig>,
 	instance: NodeLlamaCppInstance,
 	signal?: AbortSignal,
 ): Promise<EngineTextCompletionResult> {
@@ -787,11 +728,8 @@ export async function processTextCompletionTask(
 			presencePenalty: request.presencePenalty ?? defaults.presencePenalty,
 		},
 		signal: signal,
-		customStopTriggers: stopGenerationTriggers.length
-			? stopGenerationTriggers
-			: undefined,
-		seed:
-			request.seed ?? config.completionDefaults?.seed ?? getRandomNumber(0, 1000000),
+		customStopTriggers: stopGenerationTriggers.length ? stopGenerationTriggers : undefined,
+		seed: request.seed ?? config.completionDefaults?.seed ?? getRandomNumber(0, 1000000),
 		onToken: (tokens) => {
 			const text = instance.model.detokenize(tokens)
 			if (onChunk) {
@@ -803,9 +741,7 @@ export async function processTextCompletionTask(
 		},
 	})
 
-	const tokenDifference = contextSequence.tokenMeter.diff(
-		initialTokenMeterState,
-	)
+	const tokenDifference = contextSequence.tokenMeter.diff(initialTokenMeterState)
 
 	return {
 		finishReason: mapFinishReason(result.metadata.stopReason),
@@ -861,9 +797,7 @@ export async function processEmbeddingTask(
 			tokenizedInput = tokenizedInput.slice(0, contextSize)
 		}
 		inputTokens += tokenizedInput.length
-		const embedding = await instance.embeddingContext.getEmbeddingFor(
-			tokenizedInput,
-		)
+		const embedding = await instance.embeddingContext.getEmbeddingFor(tokenizedInput)
 		embeddings.push(new Float32Array(embedding.vector))
 		if (signal?.aborted) {
 			break

@@ -26,7 +26,7 @@ export interface StoredModel extends ModelConfig {
 }
 
 export interface ModelStoreOptions {
-	modelsPath: string
+	modelsCachePath: string
 	models: Record<string, ModelConfig>
 	prepareConcurrency?: number
 	log?: Logger | LogLevel
@@ -37,7 +37,7 @@ export class ModelStore {
 	models: Record<string, StoredModel> = {}
 	engines?: Record<string, ModelEngine>
 	private prepareController: AbortController
-	private modelsPath: string
+	private modelsCachePath: string
 	private log: Logger
 
 	constructor(options: ModelStoreOptions) {
@@ -46,7 +46,7 @@ export class ModelStore {
 		this.prepareQueue = new PQueue({
 			concurrency: options.prepareConcurrency ?? 2,
 		})
-		this.modelsPath = options.modelsPath
+		this.modelsCachePath = options.modelsCachePath
 		this.models = Object.fromEntries(
 			Object.entries(options.models).map(([modelId, model]) => [
 				modelId,
@@ -60,8 +60,8 @@ export class ModelStore {
 
 	async init(engines: Record<string, ModelEngine>) {
 		this.engines = engines
-		if (!existsSync(this.modelsPath)) {
-			await fs.mkdir(this.modelsPath, { recursive: true })
+		if (!existsSync(this.modelsCachePath)) {
+			await fs.mkdir(this.modelsCachePath, { recursive: true })
 		}
 
 		const blockingPromises = []

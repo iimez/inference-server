@@ -8,8 +8,8 @@ startHTTPServer({
 	// If its exceeded, requests will be queued up and stall until a model becomes available.
 	// Defaults to 1 = process one request at a time.
 	concurrency: 2,
-	// Where to cache models to disk. Defaults to `~/.cache/lllms`
-	// modelsPath: '/path/to/models',
+	// Where to cache to disk. Defaults to `~/.cache/node/inference-server`
+	// cachePath: '/path/to/cache',
 	models: {
 		// Specify as many models as you want. Identifiers can use a-zA-Z0-9_:\-\.
 		// Required are `task`, `engine`, `url` and/or `file`.
@@ -21,9 +21,8 @@ startHTTPServer({
 			// specify sha256 hash to verify the downloaded file.
 			sha256: 'a98d3857b95b96c156d954780d28f39dcb35b642e72892ee08ddff70719e6220',
 			// The preparation process downloads and verifies model files before instantiating the model.
-			// Use this to control when that happens. Defaults to 'on-demand'.
-			// Options are:
-			// - 'on-demand' = prepare on first request
+			// Use this to control when that happens. Options are:
+			// - 'on-demand' = prepare on first request. This is the default.
 			// - 'blocking' = prepare immediately on startup
 			// - 'async' = prepare in background but don't block startup. Requests to the model during the preparation process will resolve once its ready.
 			// Note that if minInstances > 0 then this is effectively always "blocking" because the model preparation will happen immediately.
@@ -70,29 +69,33 @@ startHTTPServer({
 			// Avilable tools may be defined on the model or during requests.
 			// Note that for using `preload` with `toolDocumentation` they _must_ be defined here (on the model).
 			tools: {
-				getLocationWeather: {
-					description: 'Get the weather in a location',
-					parameters: {
-						type: 'object',
-						properties: {
-							location: {
-								type: 'string',
-								description: 'The city and state, e.g. San Francisco, CA',
+				includeParamsDocumentation: true, // Include parameter documentation in tool documentation.
+				parallelism: 2, // How many tools may be executed in parallel. Defaults to 1.
+				definitions: {
+					getLocationWeather: {
+						description: 'Get the weather in a location',
+						parameters: {
+							type: 'object',
+							properties: {
+								location: {
+									type: 'string',
+									description: 'The city and state, e.g. San Francisco, CA',
+								},
+								unit: {
+									type: 'string',
+									enum: ['celsius', 'fahrenheit'],
+								},
 							},
-							unit: {
-								type: 'string',
-								enum: ['celsius', 'fahrenheit'],
-							},
+							required: ['location'],
 						},
-						required: ['location'],
-					},
-					// Handler is optional. If its set, the model will ingest the return value and respond with the final assistant message.
-					// If unset the model will respond with a tool call message instead. In this case you need to push tool call results into the message array.
-					handler: async (parameters) => {
-						const { location, unit } = parameters
-						// Call a weather API or something
-						return `The temperature in ${location} is 23°C`
-					},
+						// Handler is optional. If its set, the model will ingest the return value and respond with the final assistant message.
+						// If unset the model will respond with a tool call message instead. In this case you need to push tool call results into the message array.
+						handler: async (parameters) => {
+							const { location, unit } = parameters
+							// Call a weather API or something
+							return `The temperature in ${location} is 23°C`
+						},
+					}
 				}
 			}
 		},

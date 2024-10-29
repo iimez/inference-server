@@ -27,7 +27,8 @@ import {
 import { LogLevels } from '#package/lib/logger.js'
 import { downloadModelFile } from '#package/lib/downloadModelFile.js'
 import { acquireFileLock } from '#package/lib/acquireFileLock.js'
-import { createChatMessageArray, verifyModelFile } from './util.js'
+import { validateModelFile } from '#package/lib/validateModelFile.js'
+import { createChatMessageArray } from './util.js'
 
 export type GPT4AllInstance = InferenceModel | EmbeddingModel
 
@@ -67,7 +68,7 @@ export async function prepareModel(
 	fs.mkdirSync(path.dirname(config.location), { recursive: true })
 	const releaseFileLock = await acquireFileLock(config.location)
 	if (signal?.aborted) {
-		await releaseFileLock()
+		releaseFileLock()
 		return
 	}
 	log(LogLevels.info, `Preparing gpt4all model at ${config.location}`, {
@@ -76,68 +77,74 @@ export async function prepareModel(
 	let modelMeta: GPT4AllModelMeta | undefined
 	let modelList: GPT4AllModelMeta[]
 	const modelMetaPath = path.join(path.dirname(config.location), 'models.json')
-	if (!fs.existsSync(modelMetaPath)) {
-		const res = await fetch(DEFAULT_MODEL_LIST_URL)
-		modelList = (await res.json()) as GPT4AllModelMeta[]
-		fs.writeFileSync(modelMetaPath, JSON.stringify(modelList, null, 2))
-	} else {
-		modelList = JSON.parse(fs.readFileSync(modelMetaPath, 'utf-8'))
-	}
-	const foundModelMeta = modelList.find((item) => {
-		if (config.md5 && item.md5sum) {
-			return item.md5sum === config.md5
+	try {
+		if (!fs.existsSync(modelMetaPath)) {
+			const res = await fetch(DEFAULT_MODEL_LIST_URL)
+			modelList = (await res.json()) as GPT4AllModelMeta[]
+			fs.writeFileSync(modelMetaPath, JSON.stringify(modelList, null, 2))
+		} else {
+			modelList = JSON.parse(fs.readFileSync(modelMetaPath, 'utf-8'))
 		}
-		if (config.url && item.url) {
-			return item.url === config.url
+		const foundModelMeta = modelList.find((item) => {
+			if (config.md5 && item.md5sum) {
+				return item.md5sum === config.md5
+			}
+			if (config.url && item.url) {
+				return item.url === config.url
+			}
+			return item.filename === path.basename(config.location)
+		})
+		if (foundModelMeta) {
+			modelMeta = foundModelMeta
 		}
-		return item.filename === path.basename(config.location)
-	})
-	if (foundModelMeta) {
-		modelMeta = foundModelMeta
-	}
 
-	if (!fs.existsSync(config.location)) {
-		if (!config.url) {
-			throw new Error(`Cannot download "${config.id}" - no URL configured`)
+		const validationError = await validateModelFile({
+			...config,
+			md5: config.md5 || modelMeta?.md5sum,
+		})
+		if (signal?.aborted) {
+			return
+		}
+		if (validationError) {
+			if (config.url) {
+				log(LogLevels.info, 'Downloading', {
+					model: config.id,
+					url: config.url,
+					location: config.location,
+					error: validationError,
+				})
+				await downloadModelFile({
+					url: config.url,
+					filePath: config.location,
+					modelsCachePath: config.modelsCachePath,
+					onProgress,
+					signal,
+				})
+			} else {
+				throw new Error(`${validationError} - No URL provided`)
+			}
+		}
+
+		const finalValidationError = await validateModelFile({
+			...config,
+			md5: config.md5 || modelMeta?.md5sum,
+		})
+		if (finalValidationError) {
+			throw new Error(`Downloaded files are invalid: ${finalValidationError}`)
 		}
 		if (signal?.aborted) {
 			return
 		}
-		log(LogLevels.info, 'Downloading', {
-			model: config.id,
-			url: config.url,
-			location: config.location,
-		})
-		await downloadModelFile({
-			url: config.url,
-			filePath: config.location,
-			modelsPath: config.modelsPath,
-			onProgress,
-			signal,
-		})
-	}
-	
-	if (signal?.aborted) {
-		await releaseFileLock()
-		return
-	}
-	try {
-		if (config.md5) {
-			await verifyModelFile(config.location, config.md5)
-		} else if (modelMeta?.md5sum) {
-			await verifyModelFile(config.location, modelMeta.md5sum)
-		}
+
 		return modelMeta
 	} catch (error) {
-		await releaseFileLock()
 		throw error
+	} finally {
+		releaseFileLock()
 	}
 }
 
-export async function createInstance(
-	{ config, log }: EngineContext<GPT4AllModelConfig>,
-	signal?: AbortSignal,
-) {
+export async function createInstance({ config, log }: EngineContext<GPT4AllModelConfig>, signal?: AbortSignal) {
 	log(LogLevels.info, `Load GPT4All model ${config.location}`)
 	let device = config.device?.gpu ?? 'cpu'
 	if (typeof device === 'boolean') {
@@ -221,8 +228,7 @@ export async function processTextCompletionTask(
 
 	const defaults = config.completionDefaults ?? {}
 	const stopTriggers = request.stop ?? defaults.stop ?? []
-	const includesStopTriggers = (text: string) =>
-		stopTriggers.find((t) => text.includes(t))
+	const includesStopTriggers = (text: string) => stopTriggers.find((t) => text.includes(t))
 	const result = await instance.generate(request.prompt, {
 		// @ts-ignore
 		special: true, // allows passing in raw prompt (including <|start|> etc.)
@@ -291,13 +297,7 @@ export async function processTextCompletionTask(
 }
 
 export async function processChatCompletionTask(
-	{
-		request,
-		config,
-		resetContext,
-		log,
-		onChunk,
-	}: EngineChatCompletionArgs<GPT4AllModelConfig>,
+	{ request, config, resetContext, log, onChunk }: EngineChatCompletionArgs<GPT4AllModelConfig>,
 	instance: GPT4AllInstance,
 	signal?: AbortSignal,
 ): Promise<EngineChatCompletionResult> {
@@ -324,9 +324,7 @@ export async function processChatCompletionTask(
 		})
 	}
 
-	const conversationMessages = createChatMessageArray(request.messages).filter(
-		(m) => m.role !== 'system',
-	)
+	const conversationMessages = createChatMessageArray(request.messages).filter((m) => m.role !== 'system')
 
 	const lastMessage = conversationMessages[conversationMessages.length - 1]
 	if (!(lastMessage.role === 'user' && lastMessage.content)) {
@@ -339,8 +337,7 @@ export async function processChatCompletionTask(
 
 	const defaults = config.completionDefaults ?? {}
 	const stopTriggers = request.stop ?? defaults.stop ?? []
-	const includesStopTriggers = (text: string) =>
-		stopTriggers.find((t) => text.includes(t))
+	const includesStopTriggers = (text: string) => stopTriggers.find((t) => text.includes(t))
 	const result = await createCompletion(session, input, {
 		temperature: request.temperature ?? defaults.temperature,
 		nPredict: request.maxTokens ?? defaults.maxTokens,

@@ -1,4 +1,3 @@
-import os from 'node:os'
 import path from 'node:path'
 import { builtInEngineNames } from '#package/engines/index.js'
 import { ModelPool } from '#package/pool.js'
@@ -25,12 +24,13 @@ import {
 import { Logger, LogLevel, createSublogger, LogLevels } from '#package/lib/logger.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
 import { validateModelOptions } from '#package/lib/validateModelOptions.js'
+import { getCacheDirPath } from '#package/lib/getCacheDirPath.js'
 
 export interface ModelServerOptions {
 	engines?: Record<string, ModelEngine>
 	models: Record<string, ModelOptions>
 	concurrency?: number
-	modelsPath?: string
+	cachePath?: string
 	log?: Logger | LogLevel
 }
 
@@ -48,8 +48,10 @@ export class ModelServer {
 
 	constructor(options: ModelServerOptions) {
 		this.log = createSublogger(options.log)
-		const modelsPath =
-			options?.modelsPath || path.resolve(os.homedir(), '.cache/inference-server')
+		let modelsCachePath = getCacheDirPath('models')
+		if (options.cachePath) {
+			modelsCachePath = path.join(options.cachePath, 'models')
+		}
 
 		const modelsWithDefaults: Record<string, ModelConfigBase> = {}
 		const usedEngines: Array<{ model: string; engine: string }> = []
@@ -57,15 +59,19 @@ export class ModelServer {
 			const modelOptions = options.models[modelId]
 			const isBuiltIn = builtInEngineNames.includes(modelOptions.engine)
 			if (isBuiltIn) {
-				const builtInModelOptions = modelOptions as BuiltInModelOptions;
+				const builtInModelOptions = modelOptions as BuiltInModelOptions
 				// can validate and resolve location of model files if a built-in engine is used
 				validateModelOptions(modelId, builtInModelOptions)
 				modelsWithDefaults[modelId] = {
 					id: modelId,
 					minInstances: 0,
 					maxInstances: 1,
-					modelsPath,
-					location: resolveModelFileLocation({ url: builtInModelOptions.url, filePath: builtInModelOptions.location, modelsPath }),
+					modelsCachePath,
+					location: resolveModelFileLocation({
+						url: builtInModelOptions.url,
+						filePath: builtInModelOptions.location,
+						modelsCachePath,
+					}),
 					...builtInModelOptions,
 				}
 			} else {
@@ -74,7 +80,7 @@ export class ModelServer {
 					id: modelId,
 					minInstances: 0,
 					maxInstances: 1,
-					modelsPath,
+					modelsCachePath,
 					...customEngineOptions,
 				}
 			}
@@ -89,9 +95,7 @@ export class ModelServer {
 			const isBuiltIn = builtInEngineNames.includes(ref.engine)
 			const isCustom = customEngines.includes(ref.engine)
 			if (!isBuiltIn && !isCustom) {
-				throw new Error(
-					`Engine "${ref.engine}" used by model "${ref.model}" does not exist`,
-				)
+				throw new Error(`Engine "${ref.engine}" used by model "${ref.model}" does not exist`)
 			}
 			if (isCustom) {
 				this.engines[ref.engine] = options.engines![ref.engine]
@@ -100,9 +104,10 @@ export class ModelServer {
 
 		this.store = new ModelStore({
 			log: this.log,
+			// TODO expose this? or remove it?
 			// prepareConcurrency: 2,
 			models: modelsWithDefaults,
-			modelsPath,
+			modelsCachePath,
 		})
 		this.pool = new ModelPool(
 			{
@@ -138,7 +143,7 @@ export class ModelServer {
 			engineStartPromises.push(
 				new Promise(async (resolve, reject) => {
 					try {
-						const engine = await import(`#package/engines/${key}/engine.js`)
+						const engine = await import(`./engines/${key}/engine.js`)
 						this.engines[key] = engine
 						resolve({
 							key,
@@ -151,10 +156,7 @@ export class ModelServer {
 			)
 		}
 		await Promise.all(engineStartPromises)
-		await Promise.all([
-			this.store.init(this.engines),
-			this.pool.init(this.engines),
-		])
+		await Promise.all([this.store.init(this.engines), this.pool.init(this.engines)])
 	}
 
 	async stop() {
@@ -201,10 +203,7 @@ export class ModelServer {
 		}
 	}
 
-	async processChatCompletionTask(
-		args: ChatCompletionRequest,
-		options?: CompletionProcessingOptions,
-	) {
+	async processChatCompletionTask(args: ChatCompletionRequest, options?: CompletionProcessingOptions) {
 		const lock = await this.requestInstance(args)
 		const task = lock.instance.processChatCompletionTask(args, options)
 		const result = await task.result
@@ -212,10 +211,7 @@ export class ModelServer {
 		return result
 	}
 
-	async processTextCompletionTask(
-		args: TextCompletionRequest,
-		options?: CompletionProcessingOptions,
-	) {
+	async processTextCompletionTask(args: TextCompletionRequest, options?: CompletionProcessingOptions) {
 		const lock = await this.requestInstance(args)
 		const task = lock.instance.processTextCompletionTask(args, options)
 		const result = await task.result
@@ -223,10 +219,7 @@ export class ModelServer {
 		return result
 	}
 
-	async processEmbeddingTask(
-		args: EmbeddingRequest,
-		options?: ProcessingOptions,
-	) {
+	async processEmbeddingTask(args: EmbeddingRequest, options?: ProcessingOptions) {
 		const lock = await this.requestInstance(args)
 		const task = lock.instance.processEmbeddingTask(args, options)
 		const result = await task.result
@@ -234,10 +227,7 @@ export class ModelServer {
 		return result
 	}
 
-	async processImageToTextTask(
-		args: ImageToTextRequest,
-		options?: ProcessingOptions,
-	) {
+	async processImageToTextTask(args: ImageToTextRequest, options?: ProcessingOptions) {
 		const lock = await this.requestInstance(args)
 		const task = lock.instance.processImageToTextTask(args, options)
 		const result = await task.result
@@ -245,10 +235,7 @@ export class ModelServer {
 		return result
 	}
 
-	async processSpeechToTextTask(
-		args: SpeechToTextRequest,
-		options?: SpeechToTextProcessingOptions,
-	) {
+	async processSpeechToTextTask(args: SpeechToTextRequest, options?: SpeechToTextProcessingOptions) {
 		const lock = await this.requestInstance(args)
 		const task = lock.instance.processSpeechToTextTask(args, options)
 		const result = await task.result
@@ -256,10 +243,7 @@ export class ModelServer {
 		return result
 	}
 
-	async processTextToImageTask(
-		args: TextToImageRequest,
-		options?: ProcessingOptions,
-	) {
+	async processTextToImageTask(args: TextToImageRequest, options?: ProcessingOptions) {
 		const lock = await this.requestInstance(args)
 		const task = lock.instance.processTextToImageTask(args, options)
 		const result = await task.result
@@ -267,10 +251,7 @@ export class ModelServer {
 		return result
 	}
 
-	async processImageToImageTask(
-		args: ImageToImageRequest,
-		options?: ProcessingOptions,
-	) {
+	async processImageToImageTask(args: ImageToImageRequest, options?: ProcessingOptions) {
 		const lock = await this.requestInstance(args)
 		const task = lock.instance.processImageToImageTask(args, options)
 		const result = await task.result

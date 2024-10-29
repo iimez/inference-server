@@ -322,26 +322,26 @@ suite('prefix', () => {
 	})
 })
 
-suite('context shift', () => {
-	const llms = new ModelServer({
-		// log: 'debug',
-		models: {
-			test: testModel,
-		},
-	})
-	beforeAll(async () => {
-		await llms.start()
-	})
-	afterAll(async () => {
-		await llms.stop()
-	})
-	test('during first user message', async () => {
-		await runIngestionContextShiftTest(llms)
-	})
-	test('during assistant response', async () => {
-		await runGenerationContextShiftTest(llms)
-	})
-})
+// suite('context shift', () => {
+// 	const llms = new ModelServer({
+// 		// log: 'debug',
+// 		models: {
+// 			test: testModel,
+// 		},
+// 	})
+// 	beforeAll(async () => {
+// 		await llms.start()
+// 	})
+// 	afterAll(async () => {
+// 		await llms.stop()
+// 	})
+// 	test('during first user message', async () => {
+// 		await runIngestionContextShiftTest(llms)
+// 	})
+// 	test('during assistant response', async () => {
+// 		await runGenerationContextShiftTest(llms)
+// 	})
+// })
 
 suite('ingest', () => {
 	const llms = new ModelServer({

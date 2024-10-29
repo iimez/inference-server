@@ -8,7 +8,7 @@ The project includes a model resource pool, an inference queue and a HTTP API se
 
 ### Features
 
-- Configure as many models as you want, they will be downloaded and cached on demand to `~/.cache/lllms`. You may provide them as abs file paths if you already have models downloaded.
+- Configure as many models as you want, they will be downloaded and cached to disk. You may provide them as abs file paths if you already have models downloaded.
 - Adjust the pool `concurrency`, and the models `maxInstances`, `ttl` and `contextSize` to fit your usecase. Combine multiple pools for more complex setups.
 - Can be tuned to either use no resources when idle or to always keep a model ready with context preloaded.
 - A chat session cache that will effectively reuse context across multiple turns or stateless requests.
@@ -177,10 +177,12 @@ Not in any particular order:
 - [ ] Add engine interfaces for resource use (and estimates, see https://github.com/ggerganov/llama.cpp/issues/4315 and https://github.com/withcatai/node-llama-cpp/blob/beta/src/gguf/insights/utils/resolveContextContextSizeOption.ts)
 - [ ] Allow configuring a pools max memory usage
 - [ ] Test deno/bun support
+- [ ] Add image generation endpoint in oai api
 - [ ] Add transcript endpoint in oai api
 - [ ] Add `n` parameter support to node-llama-cpp chat completions
 - [ ] [CLI](https://github.com/iimez/lllms/discussions/7)
 - [ ] Replace express with tinyhttp
+- [ ] Add stable-diffusion engine
 
 ### Contributing
 

@@ -7,15 +7,17 @@ import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.
 interface DownloadArgs {
 	url: string
 	filePath?: string
-	modelsPath: string
+	modelsCachePath: string
 	onProgress?: (progress: FileDownloadProgress) => void
 	signal?: AbortSignal
 }
 
-export async function downloadModelFile({ url, filePath, modelsPath, onProgress, signal }: DownloadArgs) {
+export async function downloadModelFile({ url, filePath, modelsCachePath, onProgress, signal }: DownloadArgs) {
 	let downloadUrl = url
 	const parsedUrl = new URL(url)
 	if (parsedUrl.hostname === 'huggingface.co') {
+		// TODO support auth headers
+		// https://ido-pluto.github.io/ipull/#md:custom-headers
 		const pathnameParts = parsedUrl.pathname.split('/')
 		if (pathnameParts.length > 3 && pathnameParts[3] === 'blob') {
 			const newUrl = new URL(url)
@@ -31,10 +33,12 @@ export async function downloadModelFile({ url, filePath, modelsPath, onProgress,
 	const destinationFile = resolveModelFileLocation({
 		url: downloadUrl,
 		filePath,
-		modelsPath,
+		modelsCachePath,
 	})
 
 	fs.mkdirSync(path.dirname(destinationFile), { recursive: true })
+	// TODO split gguf file support, could regex filename and download the rest
+	// see https://ido-pluto.github.io/ipull/#md:download-file-from-parts
 	const controller = await createFileDownload({
 		url: downloadUrl,
 		savePath: destinationFile,

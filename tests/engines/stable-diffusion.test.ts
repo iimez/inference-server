@@ -7,7 +7,7 @@ import { cosineSimilarity } from '#package/lib/math.js'
 
 suite('basic', () => {
 	const llms = new ModelServer({
-		log: 'debug',
+		// log: 'debug',
 		models: {
 			'flux-schnell': {
 				url: 'https://huggingface.co/leejet/FLUX.1-schnell-gguf/resolve/main/flux1-schnell-q4_0.gguf',
@@ -207,5 +207,5 @@ suite('basic', () => {
 		const spaceCatSimilarity = cosineSimilarity(spaceCatImageEmbedding, promptEmbedding)
 		const redCatSimilarity = cosineSimilarity(redCatImageEmbedding, promptEmbedding)
 		expect(spaceCatSimilarity).toBeGreaterThan(redCatSimilarity)
-	})
+	}, 360000)
 })

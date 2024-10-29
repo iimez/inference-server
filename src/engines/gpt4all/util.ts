@@ -1,7 +1,6 @@
 import { ChatMessage as GPT4AllChatMessage } from 'gpt4all'
 import { ChatMessage } from '#package/types/index.js'
 import { flattenMessageTextContent } from '#package/lib/flattenMessageTextContent.js'
-import { calculateFileChecksum } from '#package/lib/calculateFileChecksum.js'
 
 export function createChatMessageArray(
 	messages: ChatMessage[],
@@ -29,13 +28,4 @@ export function createChatMessageArray(
 		})
 	}
 	return chatMessages
-}
-
-export async function verifyModelFile(location: string, md5: string) {
-	const fileHash = await calculateFileChecksum(location, 'md5')
-	if (fileHash !== md5) {
-		throw new Error(
-			`Model md5 checksum mismatch: expected ${md5} got ${fileHash} for ${location}`,
-		)
-	}
 }

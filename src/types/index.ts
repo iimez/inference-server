@@ -53,7 +53,7 @@ export interface ModelConfigBase extends ModelOptionsBase {
 	id: string
 	minInstances: number
 	maxInstances: number
-	modelsPath: string
+	modelsCachePath: string
 }
 
 export interface ModelConfig extends ModelConfigBase {

@@ -61,7 +61,7 @@ export async function prepareModel(
 	fs.mkdirSync(path.dirname(config.location), { recursive: true })
 	const releaseFileLock = await acquireFileLock(config.location)
 	if (signal?.aborted) {
-		await releaseFileLock()
+		releaseFileLock()
 		return
 	}
 	log(LogLevels.info, `Preparing stable-diffusion model at ${config.location}`, {
@@ -81,7 +81,7 @@ export async function prepareModel(
 				downloadModelFile({
 					url: url,
 					filePath: config.location,
-					modelsPath: config.modelsPath,
+					modelsCachePath: config.modelsCachePath,
 					onProgress,
 					signal,
 				}),
@@ -95,7 +95,7 @@ export async function prepareModel(
 				downloadModelFile({
 					url: src.url,
 					filePath: src.file,
-					modelsPath: config.modelsPath,
+					modelsCachePath: config.modelsCachePath,
 					onProgress,
 					signal,
 				}),
@@ -129,8 +129,11 @@ export async function prepareModel(
 		}
 		return Promise.all(downloadPromises)
 	}
-
 	try {
+		if (signal?.aborted) {
+			return
+		}
+
 		const validationResults = await validateModelFiles(config)
 		if (signal?.aborted) {
 			return
@@ -139,13 +142,13 @@ export async function prepareModel(
 			if (config.url) {
 				await downloadModel(config.url, validationResults)
 			} else {
-				throw new Error(`Model files are invalid: ${validationResults.message}`)
+				throw new Error(`${validationResults.message} - No URL provided`)
 			}
 		}
 
 		const finalValidationError = await validateModelFiles(config)
 		if (finalValidationError) {
-			throw new Error(`Model files are invalid: ${finalValidationError}`)
+			throw new Error(`Downloaded files are invalid: ${finalValidationError}`)
 		}
 
 		const result: any = {}
@@ -157,8 +160,9 @@ export async function prepareModel(
 		}
 		return result
 	} catch (error) {
-		await releaseFileLock()
 		throw error
+	} finally {
+		releaseFileLock()
 	}
 }
 
@@ -171,28 +175,23 @@ export async function createInstance({ config, log }: EngineContext<StableDiffus
 		log(LogLevels.debug, `Progress: ${step}/${steps} (${time}ms)`)
 	}
 
-	const vaeFilePath = config.vae
-		? resolveModelFileLocation({ url: config.vae.url, filePath: config.vae.file, modelsPath: config.modelsPath })
-		: undefined
-	const clipLFilePath = config.clipL
-		? resolveModelFileLocation({ url: config.clipL.url, filePath: config.clipL.file, modelsPath: config.modelsPath })
-		: undefined
-	const clipGFilePath = config.clipG
-		? resolveModelFileLocation({ url: config.clipG.url, filePath: config.clipG.file, modelsPath: config.modelsPath })
-		: undefined
-	const t5xxlFilePath = config.t5xxl
-		? resolveModelFileLocation({ url: config.t5xxl.url, filePath: config.t5xxl.file, modelsPath: config.modelsPath })
-		: undefined
-	const controlNetFilePath = config.controlNet
-		? resolveModelFileLocation({
-				url: config.controlNet.url,
-				filePath: config.controlNet.file,
-				modelsPath: config.modelsPath,
-		  })
-		: undefined
-	const taesdFilePath = config.taesd
-		? resolveModelFileLocation({ url: config.taesd.url, filePath: config.taesd.file, modelsPath: config.modelsPath })
-		: undefined
+	const resolveComponentLocation = (src?: ModelFileSource) => {
+		if (src) {
+			return resolveModelFileLocation({
+				url: src.url,
+				filePath: src.file,
+				modelsCachePath: config.modelsCachePath,
+			})
+		}
+		return undefined
+	}
+
+	const vaeFilePath = resolveComponentLocation(config.vae)
+	const clipLFilePath = resolveComponentLocation(config.clipL)
+	const clipGFilePath = resolveComponentLocation(config.clipG)
+	const t5xxlFilePath = resolveComponentLocation(config.t5xxl)
+	const controlNetFilePath = resolveComponentLocation(config.controlNet)
+	const taesdFilePath = resolveComponentLocation(config.taesd)
 
 	let weightType = config.weightType ? getWeightType(config.weightType) : undefined
 	if (typeof weightType === 'undefined') {

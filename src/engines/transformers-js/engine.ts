@@ -32,6 +32,7 @@ import { decodeAudio } from '#package/lib/decodeAudio.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
 import { parseHuggingfaceModelIdAndBranch, remoteFileExists } from './util.js'
 import { validateModelFiles, ModelValidationResult } from './validateModelFiles.js'
+import { copyDirectory } from '#package/lib/copyDirectory.js'
 
 interface TransformersJsModelComponents {
 	model?: PreTrainedModel
@@ -113,7 +114,7 @@ async function loadModelComponents(
 			const processorPath = resolveModelFileLocation({
 				url: modelOpts.processor.url,
 				filePath: modelOpts.processor.file,
-				modelsPath: config.modelsPath,
+				modelsCachePath: config.modelsCachePath,
 			})
 			const processorPromise = processorClass.from_pretrained(processorPath, {
 				local_files_only: true,
@@ -182,7 +183,7 @@ export async function prepareModel(
 	signal?: AbortSignal,
 ) {
 	if (!didConfigureEnvironment) {
-		configureEnvironment(config.modelsPath)
+		configureEnvironment(config.modelsCachePath)
 	}
 	fs.mkdirSync(config.location, { recursive: true })
 	const releaseFileLocks = await acquireModelFileLocks(config, signal)
@@ -270,7 +271,7 @@ export async function prepareModel(
 	}
 
 	const downloadModel = async (validationResult: ModelValidationResult) => {
-		log(LogLevels.info, `${validationResult.message} - Downloading model files`, {
+		log(LogLevels.info, `${validationResult.message} - Downloading files`, {
 			model: config.id,
 			url: config.url,
 			location: config.location,
@@ -281,9 +282,9 @@ export async function prepareModel(
 			throw new Error(`Missing URL for model ${config.id}`)
 		}
 		const { modelId, branch } = parseHuggingfaceModelIdAndBranch(config.url)
-		const directoriesToMove: Record<string, string> = {}
+		const directoriesToCopy: Record<string, string> = {}
 		const modelCacheDir = path.join(env.cacheDir, modelId)
-		directoriesToMove[modelCacheDir] = config.location
+		directoriesToCopy[modelCacheDir] = config.location
 		const noModelConfigured = !config.textModel && !config.visionModel && !config.speechModel
 		if (config.textModel || noModelConfigured) {
 			const requiredComponents = validationResult.errors?.textModel
@@ -300,11 +301,11 @@ export async function prepareModel(
 				const processorPath = resolveModelFileLocation({
 					url: config.visionModel.processor.url,
 					filePath: config.visionModel.processor.file,
-					modelsPath: config.modelsPath,
+					modelsCachePath: config.modelsCachePath,
 				})
 				const { modelId } = parseHuggingfaceModelIdAndBranch(config.visionModel.processor.url)
 				const processorCacheDir = path.join(env.cacheDir, modelId)
-				directoriesToMove[processorCacheDir] = processorPath
+				directoriesToCopy[processorCacheDir] = processorPath
 			}
 		}
 		if (config.speechModel) {
@@ -320,30 +321,35 @@ export async function prepareModel(
 		if (signal?.aborted) {
 			return
 		}
-		await Promise.all(Object.entries(directoriesToMove).map(([from, to]) => fs.promises.rename(from, to)))
+		// copy all downloads to their actual location, then remove the cache so we dont duplicate
+		await Promise.all(Object.entries(directoriesToCopy).map(async ([from, to]) => {
+			await copyDirectory(from, to)
+			await fs.promises.rmdir(from, { recursive: true })
+		}))
 	}
 
 	try {
-	const validationResults = await validateModelFiles(config)
-	if (signal?.aborted) {
-		releaseFileLocks()
-		return
-	}
-	if (validationResults) {
-		if (config.url) {
-			await downloadModel(validationResults)
-		} else {
-			throw new Error(`Model files are invalid: ${validationResults.message}`)
+		const validationResults = await validateModelFiles(config)
+		if (signal?.aborted) {
+			releaseFileLocks()
+			return
 		}
-	}
-	} catch (err) {
+		if (validationResults) {
+			if (config.url) {
+				await downloadModel(validationResults)
+			} else {
+				throw new Error(`Model files are invalid: ${validationResults.message}`)
+			}
+		}
+	} catch (error) {
+		throw error
+	} finally {
 		releaseFileLocks()
-		throw err
 	}
 	const configMeta: Record<string, any> = {}
 	const fileList: ModelFile[] = []
 	const modelFiles = fs.readdirSync(config.location, { recursive: true })
-	
+
 	const pushFile = (file: string) => {
 		const targetFile = path.join(config.location, file)
 		const targetStat = fs.statSync(targetFile)
@@ -356,23 +362,23 @@ export async function prepareModel(
 			configMeta[key] = JSON.parse(fs.readFileSync(targetFile, 'utf8'))
 		}
 	}
+	// add model files to the list
 	for (const file of modelFiles) {
 		pushFile(file.toString())
 	}
-	
+
+	// add extra stuff from external repos
 	if (config.visionModel?.processor) {
 		const processorPath = resolveModelFileLocation({
 			url: config.visionModel.processor.url,
 			filePath: config.visionModel.processor.file,
-			modelsPath: config.modelsPath,
+			modelsCachePath: config.modelsCachePath,
 		})
 		const processorFiles = fs.readdirSync(processorPath, { recursive: true })
 		for (const file of processorFiles) {
 			pushFile(file.toString())
 		}
 	}
-
-	releaseFileLocks()
 	return {
 		files: modelFiles,
 		...configMeta,

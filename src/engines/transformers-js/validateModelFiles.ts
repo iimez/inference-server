@@ -3,6 +3,7 @@ import { AutoModel, AutoProcessor, AutoTokenizer } from '@huggingface/transforme
 import { TransformersJsModel } from '#package/types/index.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
 import { TransformersJsModelConfig } from './engine.js'
+import { parseHuggingfaceModelIdAndBranch, remoteFileExists } from './util.js'
 
 async function validateModel(
 	modelOpts: TransformersJsModel,
@@ -24,7 +25,11 @@ async function validateModel(
 	return undefined
 }
 
-async function validateTokenizer(modelOpts: TransformersJsModel, modelPath: string): Promise<string | undefined> {
+async function validateTokenizer(
+	modelOpts: TransformersJsModel,
+	config: TransformersJsModelConfig,
+	modelPath: string,
+): Promise<string | undefined> {
 	const tokenizerClass = modelOpts.tokenizerClass ?? AutoTokenizer
 	try {
 		await tokenizerClass.from_pretrained(modelPath, {
@@ -36,22 +41,39 @@ async function validateTokenizer(modelOpts: TransformersJsModel, modelPath: stri
 	return undefined
 }
 
-async function validateProcessor(modelOpts: TransformersJsModel, modelPath: string): Promise<string | undefined> {
+async function validateProcessor(
+	modelOpts: TransformersJsModel,
+	config: TransformersJsModelConfig,
+	modelPath: string,
+): Promise<string | undefined> {
 	const processorClass = modelOpts.processorClass ?? AutoProcessor
 	try {
 		if (modelOpts.processor) {
 			const processorPath = resolveModelFileLocation({
 				url: modelOpts.processor.url,
 				filePath: modelOpts.processor.file,
-				modelsPath: modelPath,
+				modelsCachePath: config.modelsCachePath,
 			})
 			await processorClass.from_pretrained(processorPath, {
 				local_files_only: true,
 			})
 		} else {
-			await processorClass.from_pretrained(modelPath, {
-				local_files_only: true,
-			})
+			if (modelOpts.processorClass) {
+				await processorClass.from_pretrained(modelPath, {
+					local_files_only: true,
+				})
+			} else if (config.url) {
+				const { branch } = parseHuggingfaceModelIdAndBranch(config.url)
+				const [hasProcessor, hasPreprocessor] = await Promise.all([
+					remoteFileExists(`${config.url}/blob/${branch}/processor_config.json`),
+					remoteFileExists(`${config.url}/blob/${branch}/preprocessor_config.json`),
+				])
+				if (hasProcessor || hasPreprocessor) {
+					await processorClass.from_pretrained(modelPath, {
+						local_files_only: true,
+					})
+				}
+			}
 		}
 	} catch (error) {
 		return `Failed to load processor (${error})`
@@ -93,11 +115,14 @@ export async function validateModelFiles(
 	const validateModelComponents = async (modelOpts: TransformersJsModel) => {
 		const componentValidationPromises = [
 			validateModel(modelOpts, config, modelPath),
-			validateTokenizer(modelOpts, modelPath),
+			validateTokenizer(modelOpts, config, modelPath),
+			validateProcessor(modelOpts, config, modelPath),
 		]
-		if (modelOpts.processor) {
-			componentValidationPromises.push(validateProcessor(modelOpts, modelPath))
-		}
+		
+
+		// if (modelOpts.processor) {
+		// 	componentValidationPromises.push(validateProcessor(modelOpts, config, modelPath))
+		// }
 		const [model, tokenizer, processor] = await Promise.all(componentValidationPromises)
 		const result: ComponentValidationErrors = {}
 		if (model) result.model = model
@@ -135,7 +160,7 @@ export async function validateModelFiles(
 
 	if (Object.keys(validationErrors).length > 0) {
 		return {
-			message: 'failed to load model components',
+			message: 'Failed to validate model components',
 			errors: validationErrors,
 		}
 	}

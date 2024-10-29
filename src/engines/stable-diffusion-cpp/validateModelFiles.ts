@@ -1,8 +1,9 @@
 import fs from 'node:fs'
 import { calculateFileChecksum } from '#package/lib/calculateFileChecksum.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
-import { StableDiffusionModelConfig } from './engine.js'
 import { ModelFileSource } from '#package/types/index.js'
+import { StableDiffusionModelConfig } from './engine.js'
+
 interface ModelValidationErrors {
 	model?: string
 	clipL?: string
@@ -21,27 +22,41 @@ export interface ModelValidationResult {
 	errors: ModelValidationErrors
 }
 
-export async function validateModelFiles(config: StableDiffusionModelConfig): Promise<ModelValidationResult | undefined> {
+export async function validateModelFiles(
+	config: StableDiffusionModelConfig,
+): Promise<ModelValidationResult | undefined> {
 	const validateFile = async (component: string, src: ModelFileSource) => {
 		const fileLocation = resolveModelFileLocation({
 			url: src.url,
 			filePath: src.file,
-			modelsPath: config.modelsPath,
+			modelsCachePath: config.modelsCachePath,
 		})
-		const ipullFile = fileLocation + '.ipull'
-		if (fs.existsSync(ipullFile)) {
-			return {
-				component,
-				message: `${component} with incomplete download`,
-			}
-		}
 		if (!fs.existsSync(fileLocation)) {
 			return {
 				component,
 				message: `${component} file missing at ${fileLocation}`,
 			}
 		}
-		if (src.sha256) {
+		const ipullFile = fileLocation + '.ipull'
+		let validatedChecksum = false
+		if (fs.existsSync(ipullFile)) {
+			// if we have a valid file at the download destination, we can remove the ipull file
+			if (src.sha256) {
+				const fileHash = await calculateFileChecksum(fileLocation, 'sha256')
+				if (fileHash === src.sha256) {
+					fs.unlinkSync(ipullFile)
+					validatedChecksum = true
+				}
+			}
+			if (!validatedChecksum) {
+				return {
+					component,
+					message: `${component} with incomplete download`,
+				}
+			}
+		}
+
+		if (!validatedChecksum && src.sha256) {
 			const fileHash = await calculateFileChecksum(fileLocation, 'sha256')
 			if (fileHash !== src.sha256) {
 				return {
@@ -92,7 +107,7 @@ export async function validateModelFiles(config: StableDiffusionModelConfig): Pr
 	const validationErrors = res.filter((e) => !!e)
 	if (validationErrors.length) {
 		return {
-			message: 'invalid model files',
+			message: 'Invalid model files',
 			errors: validationErrors.reduce((acc, e) => {
 				acc[e.component as keyof ModelValidationErrors] = e.message
 				return acc
