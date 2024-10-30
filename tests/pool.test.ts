@@ -3,7 +3,7 @@ import { ModelServer } from '#package/server.js'
 import { createChatCompletion } from './util.js'
 
 suite('basic', () => {
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		log: 'debug',
 		models: {
 			test: {
@@ -16,14 +16,14 @@ suite('basic', () => {
 	})
 
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 
 	test('does a completion', async () => {
-		const chat = await createChatCompletion(llms, {
+		const chat = await createChatCompletion(modelServer, {
 			messages: [
 				{
 					role: 'user',
@@ -35,7 +35,7 @@ suite('basic', () => {
 	})
 
 	test('does two consecutive completions', async () => {
-		const chat1 = await createChatCompletion(llms, {
+		const chat1 = await createChatCompletion(modelServer, {
 			temperature: 1,
 			messages: [
 				{
@@ -45,7 +45,7 @@ suite('basic', () => {
 			],
 		})
 		expect(chat1.result.message.content.length).toBeGreaterThan(0)
-		const chat2 = await createChatCompletion(llms, {
+		const chat2 = await createChatCompletion(modelServer, {
 			temperature: 1,
 			messages: [
 				{
@@ -60,7 +60,7 @@ suite('basic', () => {
 	test('handles 10 simultaneous completion requests', async () => {
 		const results = await Promise.all(
 			Array.from({ length: 10 }, () =>
-				createChatCompletion(llms, {
+				createChatCompletion(modelServer, {
 					temperature: 1,
 					messages: [
 						{
@@ -77,7 +77,7 @@ suite('basic', () => {
 })
 
 suite('gpu', () => {
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		log: 'debug',
 		models: {
 			gpt4all: {
@@ -99,14 +99,14 @@ suite('gpu', () => {
 	})
 
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 
 	test('gpu completion', async () => {
-		const chat = await createChatCompletion(llms, {
+		const chat = await createChatCompletion(modelServer, {
 			model: 'gpt4all',
 			messages: [
 				{
@@ -119,7 +119,7 @@ suite('gpu', () => {
 	})
 
 	test('switch to different gpu model when necessary', async () => {
-		const chat = await createChatCompletion(llms, {
+		const chat = await createChatCompletion(modelServer, {
 			model: 'node-llama-cpp',
 			messages: [
 				{
@@ -130,10 +130,10 @@ suite('gpu', () => {
 		})
 		expect(chat.device).toBe('gpu')
 	})
-	
+
 	test('handle simultaneous requests to two gpu models', async () => {
 		const [chat1, chat2] = await Promise.all([
-			createChatCompletion(llms, {
+			createChatCompletion(modelServer, {
 				model: 'node-llama-cpp',
 				messages: [
 					{
@@ -142,7 +142,7 @@ suite('gpu', () => {
 					},
 				],
 			}),
-			createChatCompletion(llms, {
+			createChatCompletion(modelServer, {
 				model: 'gpt4all',
 				messages: [
 					{

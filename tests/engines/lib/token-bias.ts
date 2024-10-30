@@ -2,8 +2,8 @@ import { expect } from 'vitest'
 import { ModelServer } from '#package/server.js'
 import { createChatCompletion } from '../../util.js'
 
-export async function runTokenBiasTest(llms: ModelServer) {
-	const unbiasedChat = await createChatCompletion(llms, {
+export async function runTokenBiasTest(modelServer: ModelServer) {
+	const unbiasedChat = await createChatCompletion(modelServer, {
 		messages: [
 			{
 				role: 'user',
@@ -15,7 +15,7 @@ export async function runTokenBiasTest(llms: ModelServer) {
 	// 	unbiasedResponse: unbiasedChat.result.message.content,
 	// })
 	expect(unbiasedChat.result.message.content).toMatch(/time/)
-	const biasedChat = await createChatCompletion(llms, {
+	const biasedChat = await createChatCompletion(modelServer, {
 		tokenBias: {
 			'time': -100,
 			'a time...': -100,

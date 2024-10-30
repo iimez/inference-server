@@ -3,14 +3,14 @@ import { ModelServer } from '#package/server.js'
 import { createChatCompletion } from '../../util.js'
 import { ChatMessage } from '#package/types/index.js'
 
-export async function runBuiltInGrammarTest(llms: ModelServer) {
+export async function runBuiltInGrammarTest(modelServer: ModelServer) {
 	const messages: ChatMessage[] = [
 		{
 			role: 'user',
 			content: 'Answer with a JSON object containing the key "test" with the value "test". And an array of cats, just strings with names.',
 		},
 	]
-	const turn1 = await createChatCompletion(llms, {
+	const turn1 = await createChatCompletion(modelServer, {
 		grammar: 'json',
 		messages,
 	})
@@ -28,24 +28,24 @@ export async function runBuiltInGrammarTest(llms: ModelServer) {
 		role: 'user',
 		content: 'Write a haiku using the name of the first cat in the array.',
 	})
-	const turn2 = await createChatCompletion(llms, {
+	const turn2 = await createChatCompletion(modelServer, {
 		messages,
 	})
 	// console.debug({
 	// 	turn2: turn2.result.message.content,
 	// })
 	expect(turn2.result.message.content).toContain(firstCat)
-	
+
 }
 
-export async function runRawGBNFGrammarTest(llms: ModelServer) {
+export async function runRawGBNFGrammarTest(modelServer: ModelServer) {
 	const messages: ChatMessage[] = [
 		{
 			role: 'user',
 			content: 'Generate a {name, age}[] JSON array with at most 10 famous actors of all ages.',
 		},
 	]
-	const turn1 = await createChatCompletion(llms, {
+	const turn1 = await createChatCompletion(modelServer, {
 		grammar: 'custom-gbnf-string',
 		messages,
 		maxTokens: 512,
@@ -60,15 +60,15 @@ export async function runRawGBNFGrammarTest(llms: ModelServer) {
 	expect(data[0].age).toBeDefined()
 }
 
-export async function runJsonSchemaGrammarTest(llms: ModelServer) {
-	
+export async function runJsonSchemaGrammarTest(modelServer: ModelServer) {
+
 	const messages: ChatMessage[] = [
 		{
 			role: 'user',
 			content: 'Generate a {name, age} JSON object of a famous actor.',
 		},
 	]
-	const turn1 = await createChatCompletion(llms, {
+	const turn1 = await createChatCompletion(modelServer, {
 		grammar: 'custom-json-schema',
 		messages,
 		maxTokens: 512,

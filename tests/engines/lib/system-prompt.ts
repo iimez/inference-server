@@ -2,8 +2,8 @@ import { expect } from 'vitest'
 import { ModelServer } from '#package/server.js'
 import { createChatCompletion } from '../../util.js'
 
-export async function runSystemMessageTest(llms: ModelServer) {
-	const chat = await createChatCompletion(llms, {
+export async function runSystemMessageTest(modelServer: ModelServer) {
+	const chat = await createChatCompletion(modelServer, {
 		messages: [
 			{
 				role: 'system',

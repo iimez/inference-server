@@ -19,8 +19,8 @@ suite('ingest', () => {
 		const model = await llama.loadModel({
 			modelPath: path.resolve(
 				os.homedir(),
-				// '.cache/lllms/huggingface/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF-main/Meta-Llama-3-8B-Instruct.Q4_0.gguf',
-				'.cache/lllms/huggingface/mradermacher/Meta-Llama-3-8B-Instruct-GGUF-main/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf',
+				// '.cache/lmodelServer/huggingface/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF-main/Meta-Llama-3-8B-Instruct.Q4_0.gguf',
+				'.cache/inference-server/huggingface.co/mradermacher/Meta-Llama-3-8B-Instruct-GGUF-main/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf',
 			),
 		})
 		const context = await model.createContext()
@@ -28,7 +28,7 @@ suite('ingest', () => {
 			contextSequence: context.getSequence(),
 		})
 	})
-	
+
 	afterAll(async () => {
 		await llama.dispose()
 	})
@@ -45,7 +45,7 @@ suite('ingest', () => {
 		})
 		expect(a1).toMatch(/github|html/i)
 	})
-	
+
 	test('large text', async () => {
 		const text = fs.readFileSync(`tests/fixtures/lovecraft.txt`, 'utf-8').slice(-2000)
 		const a1 = await session.prompt(

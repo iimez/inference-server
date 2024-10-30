@@ -22,7 +22,7 @@ suite('basic', () => {
 		model = await llama.loadModel({
 			modelPath: path.resolve(
 				os.homedir(),
-				'.cache/lllms/huggingface/mradermacher/Meta-Llama-3-8B-Instruct-GGUF-main/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf',
+				'.cache/inference-server/huggingface.co/mradermacher/Meta-Llama-3-8B-Instruct-GGUF-main/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf',
 			),
 		})
 	})
@@ -43,7 +43,7 @@ suite('basic', () => {
 			completion: res
 		})
 	})
-	
+
 	test('chat', async () => {
 		const context = await model.createContext()
 		const session = new LlamaChatSession({

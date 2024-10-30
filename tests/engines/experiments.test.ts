@@ -14,7 +14,7 @@ import { loadImageFromUrl } from '#package/lib/loadImage.js'
 
 suite('chat with vision', () => {
 	// florence2 generates a description of the image and passes it to phi3
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		// log: 'debug',
 		concurrency: 2,
 		engines: {
@@ -55,10 +55,10 @@ suite('chat with vision', () => {
 	})
 
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 
 	it('can see', async () => {
@@ -80,7 +80,7 @@ suite('chat with vision', () => {
 				],
 			},
 		]
-		const response = await createChatCompletion(llms, {
+		const response = await createChatCompletion(modelServer, {
 			model: 'vision-at-home',
 			temperature: 0,
 			messages,
@@ -93,7 +93,7 @@ suite('chat with vision', () => {
 
 suite('voice functions', () => {
 	let searchSources: string
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		// log: 'debug',
 		engines: {
 			'voice-function-calling': new VoiceFunctionCallEngine({
@@ -162,13 +162,13 @@ suite('voice functions', () => {
 	})
 
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 	it('can hear', async () => {
-		const result = await llms.processSpeechToTextTask({
+		const result = await modelServer.processSpeechToTextTask({
 			file: 'tests/fixtures/tenabra.mp3',
 			model: 'voice-function-calling',
 			// model: 'whisper-base',

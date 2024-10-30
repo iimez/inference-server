@@ -5,7 +5,7 @@ import { createChatCompletion, parseInstanceId } from '../../util.js'
 
 // conversation that tests behavior when context window is exceeded while the model is generating text
 export async function runGenerationContextShiftTest(
-	llms: ModelServer,
+	modelServer: ModelServer,
 	model: string = 'test',
 ) {
 	// Turn 1: Tell the model a fact to remember so we can later make sure that a shift occured.
@@ -20,7 +20,7 @@ export async function runGenerationContextShiftTest(
 				"Please remember this fact for later: Platypuses have venomous spurs on their hind legs. Don't forget! Just answer with 'OK'.",
 		},
 	]
-	const response1 = await createChatCompletion(llms, {
+	const response1 = await createChatCompletion(modelServer, {
 		model,
 		temperature: 0,
 		messages,
@@ -38,7 +38,7 @@ export async function runGenerationContextShiftTest(
 			'Please provide a realistic outline of a made up animal, including its social structures, appearance, habitat, origins and diet.',
 		].join(' '),
 	})
-	const response2 = await createChatCompletion(llms, {
+	const response2 = await createChatCompletion(modelServer, {
 		temperature: 1,
 		messages,
 		maxTokens: 1024,
@@ -55,7 +55,7 @@ export async function runGenerationContextShiftTest(
 			content: `Elaborate a bit more on its ${field}. End your elaboration with 'OK'.`,
 		})
 		const response = await createChatCompletion(
-			llms,
+			modelServer,
 			{
 				temperature: 1,
 				messages,
@@ -83,7 +83,7 @@ export async function runGenerationContextShiftTest(
 		role: 'user',
 		content: 'What was the animal fact I asked you to remember earlier?',
 	})
-	const response3 = await createChatCompletion(llms, {
+	const response3 = await createChatCompletion(modelServer, {
 		messages,
 		maxTokens: 1024,
 	})

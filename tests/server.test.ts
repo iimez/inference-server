@@ -23,18 +23,18 @@ const testConfig: ModelServerOptions = {
 
 describe('Express App', () => {
 	let app: Express
-	let llmServer: ModelServer
+	let modelServer: ModelServer
 
 	beforeAll(async () => {
-		llmServer = new ModelServer(testConfig)
+		modelServer = new ModelServer(testConfig)
 		app = express()
-		app.use(express.json(), createExpressMiddleware(llmServer))
+		app.use(express.json(), createExpressMiddleware(modelServer))
 	})
 
 	it('Starts up without errors', async () => {
-		await llmServer.start()
+		await modelServer.start()
 	})
-	
+
 	it('Responds to requests', async () => {
 		const res = await request(app).get('/')
 		expect(res.status).toBe(200)

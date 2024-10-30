@@ -4,7 +4,7 @@ import { ChatMessage } from '#package/types/index.js'
 import { createChatCompletion } from '../../util.js'
 
 export async function runFileIngestionTest(
-	llms: ModelServer,
+	modelServer: ModelServer,
 	file: string,
 	prompt: string = 'Whats that?',
 	model: string = 'test',
@@ -16,7 +16,7 @@ export async function runFileIngestionTest(
 			content: text + '\n---\n\n' + prompt,
 		},
 	]
-	const response = await createChatCompletion(llms, {
+	const response = await createChatCompletion(modelServer, {
 		model,
 		messages,
 		maxTokens: 256,

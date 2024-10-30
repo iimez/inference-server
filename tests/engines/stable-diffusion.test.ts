@@ -6,7 +6,7 @@ import { loadImageFromFile } from '#package/lib/loadImage.js'
 import { cosineSimilarity } from '#package/lib/math.js'
 
 suite('basic', () => {
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		// log: 'debug',
 		models: {
 			'flux-schnell': {
@@ -83,14 +83,14 @@ suite('basic', () => {
 		},
 	})
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	}, 180000)
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 
 	test('text to image (sd-3.5-turbo)', async () => {
-		const imageRes = await llms.processTextToImageTask({
+		const imageRes = await modelServer.processTextToImageTask({
 			model: 'sd-3.5-turbo',
 			width: 512,
 			height: 512,
@@ -105,7 +105,7 @@ suite('basic', () => {
 		// 	await image.handle.toFile(`tests/engines/output-tti-sd-${i}.png`)
 		// }
 
-		const embeddingRes = await llms.processEmbeddingTask({
+		const embeddingRes = await modelServer.processEmbeddingTask({
 			model: 'jina-clip-v1',
 			input: [
 				{
@@ -128,7 +128,7 @@ suite('basic', () => {
 	}, 360000)
 
 	test('text to image (flux-schnell)', async () => {
-		const imageRes = await llms.processTextToImageTask({
+		const imageRes = await modelServer.processTextToImageTask({
 			model: 'flux-schnell',
 			width: 512,
 			height: 512,
@@ -142,7 +142,7 @@ suite('basic', () => {
 		// 	await image.handle.toFile(`tests/engines/output-tti-flux-${i}.png`)
 		// }
 
-		const embeddingRes = await llms.processEmbeddingTask({
+		const embeddingRes = await modelServer.processEmbeddingTask({
 			model: 'jina-clip-v1',
 			input: [
 				{
@@ -173,7 +173,7 @@ suite('basic', () => {
 			},
 		})
 		// await inputImage.handle.toFile('tests/engines/input-iti.png')
-		const imageRes = await llms.processImageToImageTask({
+		const imageRes = await modelServer.processImageToImageTask({
 			model: 'sdxl-turbo',
 			image: inputImage,
 			sampleSteps: 8,
@@ -187,7 +187,7 @@ suite('basic', () => {
 		// 	const image = imageRes.images[i]
 		// 	await image.handle.toFile(`tests/engines/output-iti-${i}.png`)
 		// }
-		const embeddingRes = await llms.processEmbeddingTask({
+		const embeddingRes = await modelServer.processEmbeddingTask({
 			model: 'jina-clip-v1',
 			input: [
 				{

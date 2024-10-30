@@ -33,14 +33,14 @@ const getUserLocation = {
 	},
 }
 
-export async function runFunctionCallTest(llms: ModelServer) {
+export async function runFunctionCallTest(modelServer: ModelServer) {
 	const messages: ChatMessage[] = [
 		{
 			role: 'user',
 			content: "Where am I?",
 		},
 	]
-	const turn1 = await createChatCompletion(llms, {
+	const turn1 = await createChatCompletion(modelServer, {
 		tools: {
 			getUserLocation,
 		},
@@ -50,14 +50,14 @@ export async function runFunctionCallTest(llms: ModelServer) {
 	expect(turn1.result.message.content).toMatch(/New York/)
 }
 
-export async function runSequentialFunctionCallTest(llms: ModelServer) {
+export async function runSequentialFunctionCallTest(modelServer: ModelServer) {
 	const messages: ChatMessage[] = [
 		{
 			role: 'user',
 			content: "What's the weather like today? (hint: first use getUserLocation, then check the weather for the resulting location.)",
 		},
 	]
-	const turn1 = await createChatCompletion(llms, {
+	const turn1 = await createChatCompletion(modelServer, {
 		tools: {
 			getUserLocation,
 			getLocationWeather,
@@ -74,7 +74,7 @@ export async function runSequentialFunctionCallTest(llms: ModelServer) {
 		// name: turn1FunctionCall.name,
 		content: 'New York today: Cloudy, 21°, low chance of rain.',
 	})
-	const turn2 = await createChatCompletion(llms, {
+	const turn2 = await createChatCompletion(modelServer, {
 		messages,
 	})
 	expect(turn2.result.message.content).toMatch(/cloudy/)
@@ -86,7 +86,7 @@ interface GetRandomNumberParams {
 	max: number
 }
 
-export async function runParallelFunctionCallTest(llms: ModelServer) {
+export async function runParallelFunctionCallTest(modelServer: ModelServer) {
 	const generatedNumbers: number[] = []
 	const getRandomNumber: ToolDefinition<GetRandomNumberParams> = {
 		description: 'Generate a random integer in given range',
@@ -109,7 +109,7 @@ export async function runParallelFunctionCallTest(llms: ModelServer) {
 		},
 	}
 
-	const turn1 = await createChatCompletion(llms, {
+	const turn1 = await createChatCompletion(modelServer, {
 		tools: { getRandomNumber },
 		messages: [
 			{

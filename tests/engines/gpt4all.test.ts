@@ -35,7 +35,7 @@ const testModel: ModelOptions = {
 }
 
 suite('features', () => {
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		// log: 'debug',
 		models: {
 			test: testModel,
@@ -43,23 +43,23 @@ suite('features', () => {
 	})
 
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 
 	test('stop generation trigger', async () => {
-		await runStopTriggerTest(llms)
+		await runStopTriggerTest(modelServer)
 	})
 
 	test('system message', async () => {
-		await runSystemMessageTest(llms)
+		await runSystemMessageTest(modelServer)
 	})
 })
 
 suite('cache', () => {
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		// log: 'debug',
 		models: {
 			test: testModel,
@@ -67,19 +67,19 @@ suite('cache', () => {
 	})
 
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 
 	it('should reuse context on stateless requests', async () => {
-		await runContextReuseTest(llms)
+		await runContextReuseTest(modelServer)
 	})
 
 	it('should not leak when handling multiple sessions', async () => {
-		await runContextLeakTest(llms)
+		await runContextLeakTest(modelServer)
 	})
 })
 
@@ -98,7 +98,7 @@ suite('preload', () => {
 			content: "It's 5!",
 		},
 	]
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		models: {
 			test: {
 				task: 'text-completion',
@@ -113,10 +113,10 @@ suite('preload', () => {
 	})
 
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 	test('should utilize preloaded messages', async () => {
 		const args: ChatCompletionRequest = {
@@ -130,7 +130,7 @@ suite('preload', () => {
 			],
 		}
 
-		const lock = await llms.pool.requestInstance(args)
+		const lock = await modelServer.pool.requestInstance(args)
 
 		// @ts-ignore
 		const activeSession = lock.instance.engineInstance.activeChatSession
@@ -150,7 +150,7 @@ suite('preload', () => {
 			],
 		}
 
-		const lock = await llms.pool.requestInstance(args)
+		const lock = await modelServer.pool.requestInstance(args)
 
 		// const internalMessagesBefore = lock.instance.llm.activeChatSession.messages
 		// console.debug({
@@ -171,7 +171,7 @@ suite('preload', () => {
 })
 
 suite('timeout and cancellation', () => {
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		log: 'debug',
 		models: {
 			test: {
@@ -182,15 +182,15 @@ suite('timeout and cancellation', () => {
 		},
 	})
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 	test('timeout', async () => {
-		await runTimeoutTest(llms)
+		await runTimeoutTest(modelServer)
 	})
 	test('cancellation', async () => {
-		await runCancellationTest(llms)
+		await runCancellationTest(modelServer)
 	})
 })

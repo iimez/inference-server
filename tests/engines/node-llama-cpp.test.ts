@@ -58,34 +58,34 @@ const testModel: ModelOptions = {
 }
 
 suite('features', () => {
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		// log: 'debug',
 		models: {
 			test: testModel,
 		},
 	})
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 
 	test('stop generation trigger', async () => {
-		await runStopTriggerTest(llms)
+		await runStopTriggerTest(modelServer)
 	})
 
 	test('system message', async () => {
-		await runSystemMessageTest(llms)
+		await runSystemMessageTest(modelServer)
 	})
 
 	test('token bias', async () => {
-		await runTokenBiasTest(llms)
+		await runTokenBiasTest(modelServer)
 	})
 })
 
 suite('function calling', async () => {
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		// log: 'debug',
 		models: {
 			test: {
@@ -106,52 +106,52 @@ suite('function calling', async () => {
 		},
 	})
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 
 	test('basic function call', async () => {
-		await runFunctionCallTest(llms)
+		await runFunctionCallTest(modelServer)
 	})
 	test('sequential function calls', async () => {
-		await runSequentialFunctionCallTest(llms)
+		await runSequentialFunctionCallTest(modelServer)
 	})
 	test('parallel function calls', async () => {
-		await runParallelFunctionCallTest(llms)
+		await runParallelFunctionCallTest(modelServer)
 	})
 })
 
 suite('grammar', async () => {
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		// log: 'debug',
 		models: {
 			test: testModel,
 		},
 	})
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 
 	test('built-in grammar', async () => {
-		await runBuiltInGrammarTest(llms)
+		await runBuiltInGrammarTest(modelServer)
 	})
 
 	test('gbnf string grammar', async () => {
-		await runRawGBNFGrammarTest(llms)
+		await runRawGBNFGrammarTest(modelServer)
 	})
 
 	test('json schema grammar', async () => {
-		await runJsonSchemaGrammarTest(llms)
+		await runJsonSchemaGrammarTest(modelServer)
 	})
 })
 
 suite('cache', () => {
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		// log: 'debug',
 		models: {
 			test: {
@@ -162,30 +162,30 @@ suite('cache', () => {
 		},
 	})
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 
 	test('reuse existing chat context', async () => {
-		await runContextReuseTest(llms)
+		await runContextReuseTest(modelServer)
 	})
 	test('no leak when handling multiple chat sessions', async () => {
-		await runContextLeakTest(llms)
+		await runContextLeakTest(modelServer)
 	})
 	test('reuse existing text completion context', async () => {
 		const firstPrompt = 'The opposite of red is'
-		const comp1 = await createTextCompletion(llms, {
+		const comp1 = await createTextCompletion(modelServer, {
 			model: 'test',
 			prompt: firstPrompt,
 			stop: ['.'],
 		})
 		const instanceId1 = parseInstanceId(comp1.task.id)
 		// console.debug(comp1.result)
-		
+
 		const secondPrompt = '. In consequence, '
-		const comp2 = await createTextCompletion(llms, {
+		const comp2 = await createTextCompletion(modelServer, {
 			model: 'test',
 			prompt: firstPrompt + comp1.result.text + secondPrompt,
 			stop: ['.'],
@@ -212,7 +212,7 @@ suite('preload', () => {
 			content: "It's 5!",
 		},
 	]
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		// log: 'debug',
 		models: {
 			test: {
@@ -223,13 +223,13 @@ suite('preload', () => {
 	})
 
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 	test('should utilize preloaded messages', async () => {
-		const chat = await createChatCompletion(llms, {
+		const chat = await createChatCompletion(modelServer, {
 			model: 'test',
 			messages: [
 				...initialMessages,
@@ -244,7 +244,7 @@ suite('preload', () => {
 	})
 
 	test('should not utilize preloaded messages', async () => {
-		const chat = await createChatCompletion(llms, {
+		const chat = await createChatCompletion(modelServer, {
 			model: 'test',
 			messages: [
 				{
@@ -263,7 +263,7 @@ suite('preload', () => {
 	})
 
 	test('assistant response prefill', async () => {
-		const chat = await createChatCompletion(llms, {
+		const chat = await createChatCompletion(modelServer, {
 			model: 'test',
 			messages: [
 				{
@@ -287,7 +287,7 @@ suite('preload', () => {
 
 suite('prefix', () => {
 	const prefix = 'The Secret is "koalabear"! I continuously remind myself -'
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		// log: 'debug',
 		models: {
 			test: {
@@ -298,13 +298,13 @@ suite('prefix', () => {
 	})
 
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 	test('should utilize prefix', async () => {
-		const comp = await createTextCompletion(llms, {
+		const comp = await createTextCompletion(modelServer, {
 			model: 'test',
 			prompt: prefix + ' It is really "',
 			stop: ['.'],
@@ -313,7 +313,7 @@ suite('prefix', () => {
 	})
 
 	test('should not utilize prefix', async () => {
-		const comp = await createTextCompletion(llms, {
+		const comp = await createTextCompletion(modelServer, {
 			model: 'test',
 			prompt: 'It is really "',
 			stop: ['.'],
@@ -323,55 +323,55 @@ suite('prefix', () => {
 })
 
 // suite('context shift', () => {
-// 	const llms = new ModelServer({
+// 	const modelServer = new ModelServer({
 // 		// log: 'debug',
 // 		models: {
 // 			test: testModel,
 // 		},
 // 	})
 // 	beforeAll(async () => {
-// 		await llms.start()
+// 		await modelServer.start()
 // 	})
 // 	afterAll(async () => {
-// 		await llms.stop()
+// 		await modelServer.stop()
 // 	})
 // 	test('during first user message', async () => {
-// 		await runIngestionContextShiftTest(llms)
+// 		await runIngestionContextShiftTest(modelServer)
 // 	})
 // 	test('during assistant response', async () => {
-// 		await runGenerationContextShiftTest(llms)
+// 		await runGenerationContextShiftTest(modelServer)
 // 	})
 // })
 
 suite('ingest', () => {
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		// log: 'debug',
 		models: {
 			test: testModel,
 		},
 	})
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 	test('normal text', async () => {
-		const res = await runFileIngestionTest(llms, 'lovecraft')
+		const res = await runFileIngestionTest(modelServer, 'lovecraft')
 		expect(res.message.content).toMatch(/horror|lovecraft/i)
 	})
 	test('a small website', async () => {
-		const res = await runFileIngestionTest(llms, 'hackernews')
+		const res = await runFileIngestionTest(modelServer, 'hackernews')
 		expect(res.message.content).toMatch(/hacker|news/i)
 	})
 	test('a large website', async () => {
-		const res = await runFileIngestionTest(llms, 'github')
+		const res = await runFileIngestionTest(modelServer, 'github')
 		expect(res.message.content).toMatch(/github|html/i)
 	})
 })
 
 suite('timeout and cancellation', () => {
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		// log: 'debug',
 		models: {
 			test: {
@@ -382,15 +382,15 @@ suite('timeout and cancellation', () => {
 		},
 	})
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
 	})
 	test('timeout', async () => {
-		await runTimeoutTest(llms)
+		await runTimeoutTest(modelServer)
 	})
 	test('cancellation', async () => {
-		await runCancellationTest(llms)
+		await runCancellationTest(modelServer)
 	})
 })

@@ -6,7 +6,7 @@ import { createChatCompletion, parseInstanceId } from '../../util.js'
 // conversation that tests whether the instance cache will be kept around for a follow up
 // while also handling intermediate incoming completion requests.
 export async function runContextReuseTest(
-	llms: ModelServer,
+	modelServer: ModelServer,
 	model: string = 'test',
 ) {
 	// middle part of the completion id is the instance uid.
@@ -14,13 +14,13 @@ export async function runContextReuseTest(
 	const messagesA: ChatMessage[] = [
 		{ role: 'user', content: 'Tell me a fun fact about bears.' },
 	]
-	const responseA1 = await createChatCompletion(llms, {
+	const responseA1 = await createChatCompletion(modelServer, {
 		maxTokens: 100,
 		messages: messagesA,
 	})
 	const instanceIdA1 = parseInstanceId(responseA1.task.id)
 	// do a unrelated chat completion that should be picked up by the other instance
-	const responseB1 = await createChatCompletion(llms, {
+	const responseB1 = await createChatCompletion(modelServer, {
 		maxTokens: 100,
 		messages: [
 			{
@@ -36,7 +36,7 @@ export async function runContextReuseTest(
 		role: 'user',
 		content: 'Continue.',
 	})
-	const responseA2 = await createChatCompletion(llms, {
+	const responseA2 = await createChatCompletion(modelServer, {
 		maxTokens: 100,
 		messages: messagesA,
 	})
