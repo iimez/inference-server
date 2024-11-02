@@ -143,6 +143,9 @@ async function validateSpeechModel(
 	if (modelOpts.speakerEmbeddings) {
 		
 		for (const voice of Object.values(modelOpts.speakerEmbeddings)) {
+			if (voice instanceof Float32Array) {
+				continue
+			}
 			const speakerEmbeddingsPath = resolveModelFileLocation({
 				url: voice.url,
 				filePath: voice.file,

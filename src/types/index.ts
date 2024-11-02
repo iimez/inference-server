@@ -403,7 +403,7 @@ export interface TransformersJsSpeechModel extends TransformersJsModel {
 	speakerEmbeddings: Record<string, {
 		url?: string
 		file?: string
-	}>
+	} | Float32Array>
 	vocoderClass?: TransformersJsModelClass
 	vocoder?: {
 		url?: string

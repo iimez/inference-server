@@ -26,37 +26,19 @@ import {
 	mean_pooling,
 	Processor,
 	PreTrainedModel,
-	SpeechT5ForTextToSpeech,
 	PreTrainedTokenizer,
-	WhisperForConditionalGeneration,
 	Tensor,
 } from '@huggingface/transformers'
 import { LogLevels } from '#package/lib/logger.js'
-import { acquireFileLock } from '#package/lib/acquireFileLock.js'
 import { decodeAudio } from '#package/lib/decodeAudio.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
+import { moveDirectoryContents } from '#package/lib/moveDirectoryContents.js'
+import { TransformersJsModelComponents, SpeechModelInstance } from './types.js'
 import { fetchBuffer, parseHuggingfaceModelIdAndBranch, remoteFileExists } from './util.js'
 import { validateModelFiles, ModelValidationResult } from './validateModelFiles.js'
-import { moveDirectoryContents } from '#package/lib/moveDirectoryContents.js'
+import { acquireModelFileLocks } from './acquireModelFileLocks.js'
+import { loadModelComponents, loadSpeechModelComponents } from './loadModelComponents.js'
 
-interface TransformersJsModelComponents {
-	model?: PreTrainedModel | TextToSpeechModel | SpeechToTextModel
-	processor?: Processor
-	tokenizer?: PreTrainedTokenizer
-}
-
-interface TextToSpeechModel {
-	generate_speech: SpeechT5ForTextToSpeech['generate_speech']
-}
-
-interface SpeechToTextModel {
-	generate: WhisperForConditionalGeneration['generate']
-}
-
-interface SpeechModelInstance extends TransformersJsModelComponents {
-	vocoder?: TransformersJsModelComponents
-	speakerEmbeddings?: Record<string, Float32Array>
-}
 interface TransformersJsInstance {
 	textModel?: TransformersJsModelComponents
 	visionModel?: TransformersJsModelComponents
@@ -68,6 +50,7 @@ interface ModelFile {
 	size: number
 }
 
+// TODO model metadata
 // interface TransformersJsModelMeta {
 // 	modelType: string
 // 	files: ModelFile[]
@@ -79,7 +62,6 @@ export interface TransformersJsModelConfig extends ModelConfig {
 	textModel?: TransformersJsModel
 	visionModel?: TransformersJsModel
 	speechModel?: TransformersJsSpeechModel
-	// vocoderModel?: TransformersJsModel
 	device?: {
 		gpu?: boolean | 'auto' | (string & {})
 	}
@@ -100,117 +82,6 @@ function configureEnvironment(modelsPath: string) {
 	didConfigureEnvironment = true
 }
 
-async function loadModelComponents<TModel extends TransformersJsModelComponents = TransformersJsModelComponents>(
-	modelOpts: TransformersJsModel | TransformersJsSpeechModel,
-	config: TransformersJsModelConfig,
-): Promise<TModel> {
-	const device = config.device?.gpu ? 'gpu' : 'cpu'
-	const modelClass = modelOpts.modelClass ?? AutoModel
-	let modelPath = config.location
-	if (!modelPath.endsWith('/')) {
-		modelPath += '/'
-	}
-	const loadPromises = []
-	const modelPromise = modelClass.from_pretrained(modelPath, {
-		local_files_only: true,
-		device: device,
-		dtype: modelOpts.dtype || 'fp32',
-	})
-	loadPromises.push(modelPromise)
-	const tokenizerClass = modelOpts.tokenizerClass ?? AutoTokenizer
-	const tokenizerPromise = tokenizerClass.from_pretrained(modelPath, {
-		local_files_only: true,
-	})
-	loadPromises.push(tokenizerPromise)
-
-	const hasPreprocessor = fs.existsSync(modelPath + 'preprocessor_config.json')
-	const hasProcessor = fs.existsSync(modelPath + 'processor_config.json')
-
-	if (hasProcessor || hasPreprocessor || modelOpts.processor) {
-		const processorClass = modelOpts.processorClass ?? AutoProcessor
-		if (modelOpts.processor) {
-			const processorPath = resolveModelFileLocation({
-				url: modelOpts.processor.url,
-				filePath: modelOpts.processor.file,
-				modelsCachePath: config.modelsCachePath,
-			})
-			const processorPromise = processorClass.from_pretrained(processorPath, {
-				local_files_only: true,
-			})
-			loadPromises.push(processorPromise)
-		} else {
-			const processorPromise = processorClass.from_pretrained(modelPath, {
-				local_files_only: true,
-			})
-			loadPromises.push(processorPromise)
-		}
-	}
-
-	const loadedComponents = await Promise.all(loadPromises)
-	const modelComponents: TransformersJsModelComponents = {}
-	if (loadedComponents[0]) {
-		modelComponents.model = loadedComponents[0] as PreTrainedModel
-	}
-	if (loadedComponents[1]) {
-		modelComponents.tokenizer = loadedComponents[1] as PreTrainedTokenizer
-	}
-	if (loadedComponents[2]) {
-		modelComponents.processor = loadedComponents[2] as Processor
-	}
-	return modelComponents as TModel
-}
-
-async function loadSpeechModelComponents(
-	modelOpts: TransformersJsSpeechModel,
-	config: TransformersJsModelConfig,
-): Promise<SpeechModelInstance> {
-	const loadPromises: Promise<unknown>[] = [loadModelComponents(modelOpts, config)]
-
-	if (modelOpts.vocoder) {
-		const vocoderClass = modelOpts.vocoderClass ?? AutoModel
-		const vocoderPath = resolveModelFileLocation({
-			url: modelOpts.vocoder.url,
-			filePath: modelOpts.vocoder.file,
-			modelsCachePath: config.modelsCachePath,
-		})
-		const vocoderPromise = vocoderClass.from_pretrained(vocoderPath, {
-			local_files_only: true,
-		})
-		loadPromises.push(vocoderPromise)
-	} else {
-		loadPromises.push(Promise.resolve(undefined))
-	}
-
-	if ('speakerEmbeddings' in modelOpts) {
-		const speakerEmbeddings = modelOpts.speakerEmbeddings
-		const speakerEmbeddingsPromises = []
-
-		for (const speakerEmbedding of Object.values(speakerEmbeddings)) {
-			const speakerEmbeddingsPath = resolveModelFileLocation({
-				url: speakerEmbedding.url,
-				filePath: speakerEmbedding.file,
-				modelsCachePath: config.modelsCachePath,
-			})
-			const speakerEmbeddingPromise = fs.promises
-				.readFile(speakerEmbeddingsPath)
-				.then((data) => new Float32Array(data.buffer))
-			speakerEmbeddingsPromises.push(speakerEmbeddingPromise)
-		}
-		loadPromises.push(Promise.all(speakerEmbeddingsPromises))
-	}
-	const loadedComponents = await Promise.all(loadPromises)
-	const speechModelInstance: SpeechModelInstance = loadedComponents[0] as TransformersJsModelComponents
-	if (loadedComponents[1]) {
-		speechModelInstance.vocoder = loadedComponents[1] as TransformersJsModelComponents
-	}
-	if (loadedComponents[2]) {
-		const loadedSpeakerEmbeddings = loadedComponents[2] as Float32Array[]
-		speechModelInstance.speakerEmbeddings = Object.fromEntries(
-			Object.keys(modelOpts.speakerEmbeddings).map((key, index) => [key, loadedSpeakerEmbeddings[index]]),
-		)
-	}
-	return speechModelInstance
-}
 
 async function disposeModelComponents(modelComponents: TransformersJsModelComponents) {
 	if (modelComponents.model && 'dispose' in modelComponents.model) {
@@ -225,26 +96,6 @@ interface TransformersJsDownloadProgress {
 	progress: number
 	loaded: number
 	total: number
-}
-
-async function acquireModelFileLocks(config: TransformersJsModelConfig, signal?: AbortSignal) {
-	const requestedLocks: Array<Promise<() => void>> = []
-	const modelId = config.id
-	const modelCacheDir = path.join(env.cacheDir, modelId)
-	fs.mkdirSync(modelCacheDir, { recursive: true })
-	requestedLocks.push(acquireFileLock(modelCacheDir, signal))
-	if (config.visionModel?.processor?.url) {
-		const { modelId } = parseHuggingfaceModelIdAndBranch(config.visionModel.processor.url)
-		const processorCacheDir = path.join(env.cacheDir, modelId)
-		fs.mkdirSync(processorCacheDir, { recursive: true })
-		requestedLocks.push(acquireFileLock(processorCacheDir, signal))
-	}
-	const acquiredLocks = await Promise.all(requestedLocks)
-	return () => {
-		for (const releaseLock of acquiredLocks) {
-			releaseLock()
-		}
-	}
 }
 
 export async function prepareModel(
@@ -297,7 +148,6 @@ export async function prepareModel(
 				const tokenizerDownload = tokenizerClass.from_pretrained(modelId, {
 					revision: branch,
 					progress_callback: progressCallback,
-					// use_external_data_format: true,
 				})
 				downloadPromises.tokenizer = tokenizerDownload
 			}
@@ -320,7 +170,6 @@ export async function prepareModel(
 					const processorDownload = AutoProcessor.from_pretrained(modelId, {
 						revision: branch,
 						progress_callback: progressCallback,
-						// use_external_data_format: true,
 					})
 					downloadPromises.processor = processorDownload
 				}
@@ -404,10 +253,13 @@ export async function prepareModel(
 				const vocoderCacheDir = path.join(env.cacheDir, modelId)
 				directoriesToCopy[vocoderCacheDir] = vocoderPath
 			}
-			// TODO support dictionary of speaker embeddings and look into generating them
 			if (config.speechModel?.speakerEmbeddings) {
 				const speakerEmbeddingsPromises = []
 				for (const speakerEmbedding of Object.values(config.speechModel.speakerEmbeddings)) {
+					if (speakerEmbedding instanceof Float32Array) {
+						// nothing to download if we have the embeddings already
+						continue
+					}
 					if (!speakerEmbedding.url) {
 						continue
 					}
@@ -434,7 +286,7 @@ export async function prepareModel(
 			return
 		}
 		// move all downloads to their final location
-		console.debug('Copying directories', directoriesToCopy)
+		// console.debug('Copying directories', directoriesToCopy)
 		await Promise.all(
 			Object.entries(directoriesToCopy).map(([from, to]) => {
 				if (fs.existsSync(from)) {

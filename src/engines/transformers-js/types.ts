@@ -4,15 +4,30 @@ import type {
 	PreTrainedTokenizer,
 	PretrainedMixin,
 	AutoProcessor,
+	SpeechT5ForTextToSpeech,
+	WhisperForConditionalGeneration,
 	// DataType, // this is the tensor.js DataType Type, not the one im looking for
 } from '@huggingface/transformers'
+
+// import {
+// 	env,
+// 	AutoModel,
+// 	AutoProcessor,
+// 	AutoTokenizer,
+// 	RawImage,
+// 	TextStreamer,
+// 	mean_pooling,
+// 	Processor,
+// 	PreTrainedModel,
+// 	SpeechT5ForTextToSpeech,
+// 	PreTrainedTokenizer,
+// 	WhisperForConditionalGeneration,
+// 	Tensor,
+// } from '@huggingface/transformers'
 // import type { DataType } from '@huggingface/transformers/src/utils/dtypes.js' // this is dtypes.js DataType Type, cant import
 
 export type TransformersJsModelClass = typeof PreTrainedModel
 export type TransformersJsTokenizerClass = typeof PreTrainedTokenizer
-export interface TransformersJsProcessorClass {
-	from_pretrained: (typeof AutoProcessor)['from_pretrained']
-}
 
 export type TransformersJsDataType =
 	| 'fp32'
@@ -23,3 +38,27 @@ export type TransformersJsDataType =
 	| 'q4'
 	| 'bnb4'
 	| 'q4f16'
+
+export interface TransformersJsProcessorClass {
+	from_pretrained: (typeof AutoProcessor)['from_pretrained']
+}
+
+export interface TextToSpeechModel {
+	generate_speech: SpeechT5ForTextToSpeech['generate_speech']
+}
+
+export interface SpeechToTextModel {
+	generate: WhisperForConditionalGeneration['generate']
+}
+
+export interface TransformersJsModelComponents {
+	model?: PreTrainedModel | TextToSpeechModel | SpeechToTextModel
+	processor?: Processor
+	tokenizer?: PreTrainedTokenizer
+}
+
+export interface SpeechModelInstance extends TransformersJsModelComponents {
+	vocoder?: TransformersJsModelComponents
+	speakerEmbeddings?: Record<string, Float32Array>
+}
+
