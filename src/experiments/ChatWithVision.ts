@@ -36,7 +36,7 @@ export class ChatWithVisionEngine extends CustomEngine implements ModelEngine {
 					continue
 				}
 				imageTextPromises.push(new Promise(async (resolve, reject) => {
-					// Florence2 prompt doc
+					// all florence2 task prompts: https://huggingface.co/microsoft/Florence-2-base#tasks
 					// "task_prompts_without_inputs": {
 					// 	"<OCR>": "What is the text in the image?",
 					// 	"<OCR_WITH_REGION>": "What is the text in the image, with regions?",

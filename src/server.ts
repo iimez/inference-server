@@ -13,6 +13,8 @@ import {
 	TextCompletionRequest,
 	ModelEngine,
 	ImageToTextRequest,
+	TextToSpeechRequest,
+	TextToSpeechProcessingOptions,
 	SpeechToTextRequest,
 	SpeechToTextProcessingOptions,
 	BuiltInModelOptions,
@@ -238,6 +240,14 @@ export class ModelServer {
 	async processSpeechToTextTask(args: SpeechToTextRequest, options?: SpeechToTextProcessingOptions) {
 		const lock = await this.requestInstance(args)
 		const task = lock.instance.processSpeechToTextTask(args, options)
+		const result = await task.result
+		await lock.release()
+		return result
+	}
+
+	async processTextToSpeechTask(args: TextToSpeechRequest, options?: TextToSpeechProcessingOptions) {
+		const lock = await this.requestInstance(args)
+		const task = lock.instance.processTextToSpeechTask(args, options)
 		const result = await task.result
 		await lock.release()
 		return result

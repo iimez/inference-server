@@ -1,3 +1,12 @@
+export async function fetchBuffer(url: string): Promise<Buffer> {
+	const response = await fetch(url)
+	if (!response.ok) {
+		throw new Error(`Failed to fetch ${url}: ${response.statusText}`)
+	}
+	return Buffer.from(await response.arrayBuffer())
+}
+
+
 export async function remoteFileExists(url: string): Promise<boolean> {
 	try {
 		const response = await fetch(url, { method: 'HEAD' })
@@ -24,17 +33,4 @@ export function parseHuggingfaceModelIdAndBranch(url: string): HuggingfaceModelI
 		modelId: `${repoOrg}/${repoName}`,
 		branch,
 	}
-	// if (filePath) { // path to the cached model, like /path/to/huggingface/jinaai/jina-clip-v1-main
-	// 	const filePathSegments = filePath.split('/')
-	// 	const modelDir = filePathSegments[filePathSegments.length - 1]
-	// 	const branch = modelDir.split('-').pop() || 'main'
-	// 	const repoName = modelDir.replace(new RegExp(`-${branch}$`), '')
-	// 	const repoOrg = filePathSegments[filePathSegments.length - 2]
-	// 	const modelId = `${repoOrg}/${repoName}`
-	// 	return {
-	// 		modelId,
-	// 		branch,
-	// 	}
-	// }
-	// throw new Error('Either url or filePath must be provided')
 }

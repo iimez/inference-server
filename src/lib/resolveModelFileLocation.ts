@@ -15,7 +15,6 @@ interface ResolveModelFileLocationArgs {
  * @throws If the model location could not be resolved.
  */
 export function resolveModelFileLocation({ url, filePath, modelsCachePath }: ResolveModelFileLocationArgs) {
-
 	if (filePath) {
 		// immediately return if an absolute path is provided
 		if (path.isAbsolute(filePath)) {
@@ -31,11 +30,20 @@ export function resolveModelFileLocation({ url, filePath, modelsCachePath }: Res
 		// support branches for huggingface URLs
 		if (parsedUrl.hostname === 'huggingface.co' && !destinationPath) {
 			const pathnameSegments = parsedUrl.pathname.split('/')
-			const repoOrg = pathnameSegments[1]
-			const repoName = pathnameSegments[2]
-			const branch = pathnameSegments[4] || 'main'
-			const trailingPath = pathnameSegments.slice(5).join('/')
-			destinationPath = path.join(modelsCachePath, parsedUrl.hostname, repoOrg, `${repoName}-${branch}`, trailingPath)
+
+			if (pathnameSegments[1] === 'datasets') {
+				const repoOrg = pathnameSegments[2]
+				const repoName = pathnameSegments[3]
+				const branch = pathnameSegments[5] || 'main'
+				const trailingPath = pathnameSegments.slice(6).join('/')
+				destinationPath = path.join(modelsCachePath, parsedUrl.hostname, 'datasets', repoOrg, `${repoName}-${branch}`, trailingPath)
+			} else {
+				const repoOrg = pathnameSegments[1]
+				const repoName = pathnameSegments[2]
+				const branch = pathnameSegments[4] || 'main'
+				const trailingPath = pathnameSegments.slice(5).join('/')
+				destinationPath = path.join(modelsCachePath, parsedUrl.hostname, repoOrg, `${repoName}-${branch}`, trailingPath)
+			}
 		}
 		// otherwise, use the hostname and last path segment
 		if (!destinationPath) {

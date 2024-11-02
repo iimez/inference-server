@@ -11,6 +11,7 @@ import {
 	ImageToTextRequest,
 	ProcessingOptions,
 	SpeechToTextRequest,
+	TextToSpeechRequest,
 	SpeechToTextProcessingOptions,
 	EngineChatCompletionResult,
 	EngineTextCompletionResult,
@@ -18,16 +19,10 @@ import {
 	ImageToImageRequest,
 } from '#package/types/index.js'
 import { calculateContextIdentity } from '#package/lib/calculateContextIdentity.js'
-import {
-	LogLevels,
-	Logger,
-	createLogger,
-	withLogMeta,
-} from '#package/lib/logger.js'
+import { LogLevels, Logger, createLogger, withLogMeta } from '#package/lib/logger.js'
 import { elapsedMillis, mergeAbortSignals } from '#package/lib/util.js'
 
-const idAlphabet =
-	'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+const idAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 const generateId = customAlphabet(idAlphabet, 8)
 
 type ModelInstanceStatus = 'idle' | 'busy' | 'error' | 'loading' | 'preparing'
@@ -37,7 +32,7 @@ interface ModelInstanceOptions extends ModelConfig {
 	gpu: boolean
 }
 
-export class ModelInstance<TEngineState = unknown> {
+export class ModelInstance<TEngineRef = unknown> {
 	id: string
 	status: ModelInstanceStatus
 	modelId: string
@@ -50,16 +45,13 @@ export class ModelInstance<TEngineState = unknown> {
 	log: Logger
 
 	private engine: ModelEngine
+	private engineRef?: TEngineRef | unknown
 	private contextIdentity?: string
 	private needsContextReset: boolean = false
-	private engineInstance?: TEngineState | unknown
 	private currentRequest?: ModelInstanceRequest | null
 	private shutdownController: AbortController
 
-	constructor(
-		engine: ModelEngine,
-		{ log, gpu, ...options }: ModelInstanceOptions,
-	) {
+	constructor(engine: ModelEngine, { log, gpu, ...options }: ModelInstanceOptions) {
 		this.modelId = options.id
 		this.id = this.generateInstanceId()
 		this.engine = engine
@@ -74,10 +66,7 @@ export class ModelInstance<TEngineState = unknown> {
 		this.shutdownController = new AbortController()
 
 		// TODO to implement this properly we should only include what changes the "behavior" of the model
-		this.fingerprint = crypto
-			.createHash('sha1')
-			.update(JSON.stringify(options))
-			.digest('hex')
+		this.fingerprint = crypto.createHash('sha1').update(JSON.stringify(options)).digest('hex')
 		this.log(LogLevels.info, 'Initializing new instance', {
 			model: this.modelId,
 			engine: this.config.engine,
@@ -94,18 +83,19 @@ export class ModelInstance<TEngineState = unknown> {
 		return this.id + '-' + generateId(8)
 	}
 
+	getEngineRef() {
+		return this.engineRef
+	}
+
 	async load(signal?: AbortSignal) {
-		if (this.engineInstance) {
+		if (this.engineRef) {
 			throw new Error('Instance is already loaded')
 		}
 		this.status = 'loading'
 		const loadBegin = process.hrtime.bigint()
-		const abortSignal = mergeAbortSignals([
-			this.shutdownController.signal,
-			signal,
-		])
+		const abortSignal = mergeAbortSignals([this.shutdownController.signal, signal])
 		try {
-			this.engineInstance = await this.engine.createInstance(
+			this.engineRef = await this.engine.createInstance(
 				{
 					log: withLogMeta(this.log, {
 						instance: this.id,
@@ -145,11 +135,11 @@ export class ModelInstance<TEngineState = unknown> {
 
 	dispose() {
 		this.status = 'busy'
-		if (!this.engineInstance) {
+		if (!this.engineRef) {
 			return Promise.resolve()
 		}
 		this.shutdownController.abort()
-		return this.engine.disposeInstance(this.engineInstance)
+		return this.engine.disposeInstance(this.engineRef)
 	}
 
 	lock(request: ModelInstanceRequest) {
@@ -197,30 +187,20 @@ export class ModelInstance<TEngineState = unknown> {
 			return false
 		}
 
-		return (
-			this.contextIdentity === incomingContextIdentity ||
-			incomingContextIdentity.startsWith(this.contextIdentity)
-		)
+		return this.contextIdentity === incomingContextIdentity || incomingContextIdentity.startsWith(this.contextIdentity)
 	}
 
 	matchesRequirements(request: ModelInstanceRequest) {
-		const requiresGpu =
-			!!this.config.device?.gpu && this.config.device?.gpu !== 'auto'
+		const requiresGpu = !!this.config.device?.gpu && this.config.device?.gpu !== 'auto'
 		const modelMatches = this.modelId === request.model
 		const gpuMatches = requiresGpu ? this.gpu : true
 		return modelMatches && gpuMatches
 	}
 
-	private createTaskController(args: {
-		timeout?: number
-		signal?: AbortSignal
-	}) {
+	private createTaskController(args: { timeout?: number; signal?: AbortSignal }) {
 		const cancelController = new AbortController()
 		const timeoutController = new AbortController()
-		const abortSignals = [
-			cancelController.signal,
-			this.shutdownController.signal,
-		]
+		const abortSignals = [cancelController.signal, this.shutdownController.signal]
 		if (args.signal) {
 			abortSignals.push(args.signal)
 		}
@@ -249,14 +229,9 @@ export class ModelInstance<TEngineState = unknown> {
 		}
 	}
 
-	processChatCompletionTask(
-		request: ChatCompletionRequest,
-		options?: CompletionProcessingOptions,
-	) {
+	processChatCompletionTask(request: ChatCompletionRequest, options?: CompletionProcessingOptions) {
 		if (!('processChatCompletionTask' in this.engine)) {
-			throw new Error(
-				`Engine "${this.config.engine}" does not implement chat completions`,
-			)
+			throw new Error(`Engine "${this.config.engine}" does not implement chat completions`)
 		}
 		if (!request.messages?.length) {
 			throw new Error('Messages are required for chat completions')
@@ -289,7 +264,7 @@ export class ModelInstance<TEngineState = unknown> {
 				log: taskLogger,
 				onChunk: options?.onChunk,
 			},
-			this.engineInstance,
+			this.engineRef,
 			controller.signal,
 		)
 			.then((result) => {
@@ -346,14 +321,9 @@ export class ModelInstance<TEngineState = unknown> {
 		}
 	}
 
-	processTextCompletionTask(
-		request: TextCompletionRequest,
-		options?: CompletionProcessingOptions,
-	) {
+	processTextCompletionTask(request: TextCompletionRequest, options?: CompletionProcessingOptions) {
 		if (!('processTextCompletionTask' in this.engine)) {
-			throw new Error(
-				`Engine "${this.config.engine}" does not implement text completion`,
-			)
+			throw new Error(`Engine "${this.config.engine}" does not implement text completion`)
 		}
 		if (!request.prompt) {
 			throw new Error('Prompt is required for text completion')
@@ -385,7 +355,7 @@ export class ModelInstance<TEngineState = unknown> {
 				log: taskLogger,
 				onChunk: options?.onChunk,
 			},
-			this.engineInstance,
+			this.engineRef,
 			controller.signal,
 		)
 			.then((result) => {
@@ -441,9 +411,7 @@ export class ModelInstance<TEngineState = unknown> {
 
 	processEmbeddingTask(request: EmbeddingRequest, options?: ProcessingOptions) {
 		if (!('processEmbeddingTask' in this.engine)) {
-			throw new Error(
-				`Engine "${this.config.engine}" does not implement embedding`,
-			)
+			throw new Error(`Engine "${this.config.engine}" does not implement embedding`)
 		}
 		if (!request.input) {
 			throw new Error('Input is required for embedding')
@@ -466,7 +434,7 @@ export class ModelInstance<TEngineState = unknown> {
 				config: this.config,
 				log: taskLogger,
 			},
-			this.engineInstance,
+			this.engineRef,
 			controller.signal,
 		)
 			.then((result) => {
@@ -496,14 +464,9 @@ export class ModelInstance<TEngineState = unknown> {
 		}
 	}
 
-	processImageToTextTask(
-		request: ImageToTextRequest,
-		options?: ProcessingOptions,
-	) {
+	processImageToTextTask(request: ImageToTextRequest, options?: ProcessingOptions) {
 		if (!('processImageToTextTask' in this.engine)) {
-			throw new Error(
-				`Engine "${this.config.engine}" does not implement image to text`,
-			)
+			throw new Error(`Engine "${this.config.engine}" does not implement image to text`)
 		}
 		this.lastUsed = Date.now()
 		const id = this.generateTaskId()
@@ -522,7 +485,7 @@ export class ModelInstance<TEngineState = unknown> {
 				config: this.config,
 				log: taskLogger,
 			},
-			this.engineInstance,
+			this.engineRef,
 			controller.signal,
 		)
 			.then((result) => {
@@ -551,15 +514,10 @@ export class ModelInstance<TEngineState = unknown> {
 			result,
 		}
 	}
-	
-	processImageToImageTask(
-		request: ImageToImageRequest,
-		options?: ProcessingOptions,
-	) {
+
+	processImageToImageTask(request: ImageToImageRequest, options?: ProcessingOptions) {
 		if (!('processImageToImageTask' in this.engine)) {
-			throw new Error(
-				`Engine "${this.config.engine}" does not implement image to image`,
-			)
+			throw new Error(`Engine "${this.config.engine}" does not implement image to image`)
 		}
 		this.lastUsed = Date.now()
 		const id = this.generateTaskId()
@@ -578,7 +536,7 @@ export class ModelInstance<TEngineState = unknown> {
 				config: this.config,
 				log: taskLogger,
 			},
-			this.engineInstance,
+			this.engineRef,
 			controller.signal,
 		)
 			.then((result) => {
@@ -608,14 +566,9 @@ export class ModelInstance<TEngineState = unknown> {
 		}
 	}
 
-	processSpeechToTextTask(
-		request: SpeechToTextRequest,
-		options?: SpeechToTextProcessingOptions,
-	) {
+	processSpeechToTextTask(request: SpeechToTextRequest, options?: SpeechToTextProcessingOptions) {
 		if (!('processSpeechToTextTask' in this.engine)) {
-			throw new Error(
-				`Engine "${this.config.engine}" does not implement speech to text`,
-			)
+			throw new Error(`Engine "${this.config.engine}" does not implement speech to text`)
 		}
 		this.lastUsed = Date.now()
 		const id = this.generateTaskId()
@@ -634,7 +587,7 @@ export class ModelInstance<TEngineState = unknown> {
 				config: this.config,
 				log: taskLogger,
 			},
-			this.engineInstance,
+			this.engineRef,
 			controller.signal,
 		)
 			.then((result) => {
@@ -663,15 +616,60 @@ export class ModelInstance<TEngineState = unknown> {
 			result,
 		}
 	}
-	
-	processTextToImageTask(
-		request: TextToImageRequest,
-		options?: ProcessingOptions,
-	) {
+
+	processTextToSpeechTask(request: TextToSpeechRequest, options?: ProcessingOptions) {
+		if (!('processTextToSpeechTask' in this.engine)) {
+			throw new Error(`Engine "${this.config.engine}" does not implement text to speech`)
+		}
+		this.lastUsed = Date.now()
+		const id = this.generateTaskId()
+		const taskLogger = withLogMeta(this.log, {
+			sequence: this.currentRequest!.sequence,
+			task: id,
+		})
+		const controller = this.createTaskController({
+			timeout: options?.timeout,
+			signal: options?.signal,
+		})
+		const taskBegin = process.hrtime.bigint()
+		const result = this.engine.processTextToSpeechTask!(
+			{
+				request,
+				config: this.config,
+				log: taskLogger,
+			},
+			this.engineRef,
+			controller.signal,
+		)
+			.then((result) => {
+				const timeElapsed = elapsedMillis(taskBegin)
+				controller.complete()
+				if (controller.timeoutSignal.aborted) {
+					taskLogger(LogLevels.warn, 'TextToSpeech task timed out')
+				}
+				taskLogger(LogLevels.verbose, 'TextToSpeech task done', {
+					elapsed: timeElapsed,
+				})
+				return result
+			})
+			.catch((error) => {
+				taskLogger(LogLevels.error, 'Task failed - ', {
+					error,
+				})
+				throw error
+			})
+		return {
+			id,
+			model: this.modelId,
+			createdAt: new Date(),
+			cancel: controller.cancel,
+			result,
+		}
+	}
+
+	processTextToImageTask(request: TextToImageRequest, options?: ProcessingOptions) {
 		if (!('processTextToImageTask' in this.engine)) {
-			throw new Error(
-				`Engine "${this.config.engine}" does not implement text to image`,
-			)
+			throw new Error(`Engine "${this.config.engine}" does not implement text to image`)
 		}
 		this.lastUsed = Date.now()
 		const id = this.generateTaskId()
@@ -690,7 +688,7 @@ export class ModelInstance<TEngineState = unknown> {
 				config: this.config,
 				log: taskLogger,
 			},
-			this.engineInstance,
+			this.engineRef,
 			controller.signal,
 		)
 			.then((result) => {
@@ -719,5 +717,4 @@ export class ModelInstance<TEngineState = unknown> {
 			result,
 		}
 	}
-	
 }

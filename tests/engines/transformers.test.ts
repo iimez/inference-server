@@ -1,4 +1,6 @@
 import { suite, test, expect, beforeAll, afterAll } from 'vitest'
+import { WaveFile } from 'wavefile'
+
 import { ModelServer } from '#package/server.js'
 import { cosineSimilarity } from '#package/lib/math.js'
 import { loadImageFromFile } from '#package/lib/loadImage.js'
@@ -7,10 +9,12 @@ import {
 	CLIPVisionModelWithProjection,
 	Florence2ForConditionalGeneration,
 	Florence2Processor,
-}	from '@huggingface/transformers'
+	SpeechT5ForTextToSpeech,
+} from '@huggingface/transformers'
+import { readFileSync, writeFileSync } from 'fs'
 
 suite('basic', () => {
-	const llms = new ModelServer({
+	const modelServer = new ModelServer({
 		log: 'debug',
 		models: {
 			'mxbai-embed-large-v1': {
@@ -31,8 +35,8 @@ suite('basic', () => {
 				},
 				visionModel: {
 					processor: {
-  					url: 'https://huggingface.co/Xenova/clip-vit-base-patch32',
-  					// url: 'https://huggingface.co/Xenova/vit-base-patch16-224-in21k',
+						url: 'https://huggingface.co/Xenova/clip-vit-base-patch32',
+						// url: 'https://huggingface.co/Xenova/vit-base-patch16-224-in21k',
 					},
 					modelClass: CLIPVisionModelWithProjection,
 				},
@@ -67,18 +71,45 @@ suite('basic', () => {
 					gpu: false,
 				},
 			},
+			speecht5: {
+				url: 'https://huggingface.co/Xenova/speecht5_tts',
+				engine: 'transformers-js',
+				task: 'text-to-speech',
+				speechModel: {
+				  modelClass: SpeechT5ForTextToSpeech,
+					vocoder: {
+						url: 'https://huggingface.co/Xenova/speecht5_hifigan',
+					},
+					speakerEmbeddings: {
+						defaultVoice: {
+							url: 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/speaker_embeddings.bin',
+						},
+					},
+				},
+			},
 		},
 	})
 	beforeAll(async () => {
-		await llms.start()
+		await modelServer.start()
 	})
 	afterAll(async () => {
-		await llms.stop()
+		await modelServer.stop()
+	})
+
+	test('text to speech', async () => {
+		const res = await modelServer.processTextToSpeechTask({
+			model: 'speecht5',
+			text: 'Hello, world!',
+		})
+		// const wav = new WaveFile();
+		// wav.fromScratch(res.audio.channels, res.audio.sampleRate, '32f', res.audio.samples);
+		// writeFileSync('tests/fixtures/speecht5.wav', wav.toBuffer());
+		expect(res.audio).toBeTruthy()
 	})
 
 	test('ocr single line', async () => {
 		const ocrImage = await loadImageFromFile('tests/fixtures/ocr-line.png')
-		const res = await llms.processImageToTextTask({
+		const res = await modelServer.processImageToTextTask({
 			model: 'trocr-printed',
 			image: ocrImage,
 		})
@@ -87,9 +118,10 @@ suite('basic', () => {
 
 	test('ocr multiline', async () => {
 		const ocrImage = await loadImageFromFile('tests/fixtures/ocr-multiline.png')
-		const res = await llms.processImageToTextTask({
+		const res = await modelServer.processImageToTextTask({
 			model: 'florence2-large',
 			image: ocrImage,
+			// see doc here for prompts: https://huggingface.co/microsoft/Florence-2-base#tasks
 			prompt: 'What is the text in the image?',
 		})
 		expect(res.text.startsWith('The (quick) [brown] {fox} jumps!')).toBe(true)
@@ -100,7 +132,7 @@ suite('basic', () => {
 			loadImageFromFile('tests/fixtures/blue-cat.jpg'),
 			loadImageFromFile('tests/fixtures/red-cat.jpg'),
 		])
-		const res = await llms.processEmbeddingTask({
+		const res = await modelServer.processEmbeddingTask({
 			model: 'jina-clip-v1',
 			input: [
 				{
@@ -148,7 +180,7 @@ suite('basic', () => {
 	})
 
 	test('text embedding', async () => {
-		const res = await llms.processEmbeddingTask({
+		const res = await modelServer.processEmbeddingTask({
 			model: 'mxbai-embed-large-v1',
 			input: [
 				'Represent this sentence for searching relevant passages: A man is eating a piece of bread',

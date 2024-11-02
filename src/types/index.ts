@@ -15,13 +15,13 @@ import type { ContextShiftStrategy } from '#package/engines/node-llama-cpp/types
 import type {
 	StableDiffusionWeightType,
 	StableDiffusionSamplingMethod,
-  StableDiffusionSchedule,
+	StableDiffusionSchedule,
 } from '#package/engines/stable-diffusion-cpp/types.js'
 import type {
-  TransformersJsModelClass,
-  TransformersJsTokenizerClass,
-  TransformersJsProcessorClass,
-  TransformersJsDataType,
+	TransformersJsModelClass,
+	TransformersJsTokenizerClass,
+	TransformersJsProcessorClass,
+	TransformersJsDataType,
 } from '#package/engines/transformers-js/types.js'
 export * from '#package/types/completions.js'
 
@@ -32,6 +32,7 @@ export type ModelTaskType =
 	| 'image-to-image'
 	| 'text-to-image'
 	| 'speech-to-text'
+	| 'text-to-speech'
 
 export interface ModelOptionsBase {
 	engine: BuiltInEngineName | (string & {})
@@ -67,7 +68,7 @@ export interface ModelConfig extends ModelConfigBase {
 	prefix?: string
 	initialMessages?: ChatMessage[]
 	device?: {
-		gpu?: boolean | 'auto' | (string & {})
+		gpu?: boolean | 'auto' | (string & {}) // TODO rename to backend?
 		// gpuLayers?: number
 		// cpuThreads?: number
 		// memLock?: boolean
@@ -95,6 +96,12 @@ export interface Image {
 	channels: 1 | 2 | 3 | 4
 }
 
+export interface Audio {
+	sampleRate: number
+	channels: 1 | 2
+	samples: Float32Array
+}
+
 export interface CompletionProcessingOptions extends ProcessingOptions {
 	onChunk?: (chunk: CompletionChunk) => void
 }
@@ -103,10 +110,11 @@ export interface SpeechToTextProcessingOptions extends ProcessingOptions {
 	onChunk?: (chunk: { text: string }) => void
 }
 
-export interface EngineContext<
-	TModelConfig = ModelConfig,
-	TModelMeta = unknown,
-> {
+export interface TextToSpeechProcessingOptions extends ProcessingOptions {
+	onChunk?: (chunk: { audio: Buffer }) => void
+}
+
+export interface EngineContext<TModelConfig = ModelConfig, TModelMeta = unknown> {
 	config: TModelConfig
 	meta?: TModelMeta
 	log: Logger
@@ -191,6 +199,12 @@ export interface SpeechToTextRequest {
 	maxTokens?: number
 }
 
+export interface TextToSpeechRequest {
+	model: string
+	text: string
+	voice?: string
+}
+
 export interface ModelRequestMeta {
 	sequence: number
 	abortController: AbortController
@@ -203,57 +217,49 @@ export type IncomingRequest =
 	| SpeechToTextRequest
 export type ModelInstanceRequest = ModelRequestMeta & IncomingRequest
 
-export interface EngineTextCompletionArgs<
-	TModelConfig = unknown,
-	TModelMeta = unknown,
-> extends EngineContext<TModelConfig, TModelMeta> {
+export interface EngineTextCompletionArgs<TModelConfig = unknown, TModelMeta = unknown>
+	extends EngineContext<TModelConfig, TModelMeta> {
 	onChunk?: (chunk: CompletionChunk) => void
 	resetContext?: boolean
 	request: TextCompletionRequest
 }
 
-export interface EngineChatCompletionArgs<
-	TModelConfig = unknown,
-	TModelMeta = unknown,
-> extends EngineContext<TModelConfig, TModelMeta> {
+export interface EngineChatCompletionArgs<TModelConfig = unknown, TModelMeta = unknown>
+	extends EngineContext<TModelConfig, TModelMeta> {
 	onChunk?: (chunk: CompletionChunk) => void
 	resetContext?: boolean
 	request: ChatCompletionRequest
 }
 
-export interface EngineEmbeddingArgs<
-	TModelConfig = unknown,
-	TModelMeta = unknown,
-> extends EngineContext<TModelConfig, TModelMeta> {
+export interface EngineEmbeddingArgs<TModelConfig = unknown, TModelMeta = unknown>
+	extends EngineContext<TModelConfig, TModelMeta> {
 	request: EmbeddingRequest
 }
 
-export interface EngineImageToTextArgs<
-	TModelConfig = unknown,
-	TModelMeta = unknown,
-> extends EngineContext<TModelConfig, TModelMeta> {
+export interface EngineImageToTextArgs<TModelConfig = unknown, TModelMeta = unknown>
+	extends EngineContext<TModelConfig, TModelMeta> {
 	request: ImageToTextRequest
 }
 
-export interface EngineTextToImageArgs<
-	TModelConfig = unknown,
-	TModelMeta = unknown,
-> extends EngineContext<TModelConfig, TModelMeta> {
+export interface EngineTextToImageArgs<TModelConfig = unknown, TModelMeta = unknown>
+	extends EngineContext<TModelConfig, TModelMeta> {
 	request: TextToImageRequest
 }
 
-export interface EngineImageToImageArgs<
-	TModelConfig = unknown,
-	TModelMeta = unknown,
-> extends EngineContext<TModelConfig, TModelMeta> {
+export interface EngineImageToImageArgs<TModelConfig = unknown, TModelMeta = unknown>
+	extends EngineContext<TModelConfig, TModelMeta> {
 	request: ImageToImageRequest
 }
 
-export interface EngineSpeechToTextArgs<
-	TModelConfig = unknown,
-	TModelMeta = unknown,
-> extends EngineContext<TModelConfig, TModelMeta> {
+export interface EngineSpeechToTextArgs<TModelConfig = unknown, TModelMeta = unknown>
+	extends EngineContext<TModelConfig, TModelMeta> {
 	request: SpeechToTextRequest
+	onChunk?: (chunk: { text: string }) => void
+}
+
+export interface EngineTextToSpeechArgs<TModelConfig = unknown, TModelMeta = unknown>
+	extends EngineContext<TModelConfig, TModelMeta> {
+	request: TextToSpeechRequest
 	onChunk?: (chunk: { text: string }) => void
 }
 
@@ -280,10 +286,7 @@ export interface ModelEngine<
 		onProgress?: (progress: FileDownloadProgress) => void,
 		signal?: AbortSignal,
 	) => Promise<TModelMeta>
-	createInstance: (
-		ctx: EngineContext<TModelConfig, TModelMeta>,
-		signal?: AbortSignal,
-	) => Promise<TInstance>
+	createInstance: (ctx: EngineContext<TModelConfig, TModelMeta>, signal?: AbortSignal) => Promise<TInstance>
 	disposeInstance: (instance: TInstance) => Promise<void>
 	processChatCompletionTask?: (
 		args: EngineChatCompletionArgs<TModelConfig, TModelMeta>,
@@ -310,6 +313,11 @@ export interface ModelEngine<
 		instance: TInstance,
 		signal?: AbortSignal,
 	) => Promise<EngineSpeechToTextResult>
+	processTextToSpeechTask?: (
+		args: EngineTextToSpeechArgs<TModelConfig, TModelMeta>,
+		instance: TInstance,
+		signal?: AbortSignal,
+	) => Promise<EngineTextToSpeechResult>
 	processTextToImageTask?: (
 		args: EngineTextToImageArgs<TModelConfig, TModelMeta>,
 		instance: TInstance,
@@ -357,15 +365,11 @@ interface LlamaCppModelOptionsBase extends BuiltInModelOptionsBase {
 	}
 }
 
-interface LlamaCppEmbeddingModelOptions
-	extends LlamaCppModelOptionsBase,
-		EmbeddingModelOptions {
+interface LlamaCppEmbeddingModelOptions extends LlamaCppModelOptionsBase, EmbeddingModelOptions {
 	task: 'embedding'
 }
 
-export interface LlamaCppTextCompletionModelOptions
-	extends LlamaCppModelOptionsBase,
-		TextCompletionModelOptions {
+export interface LlamaCppTextCompletionModelOptions extends LlamaCppModelOptionsBase, TextCompletionModelOptions {
 	task: 'text-completion'
 }
 
@@ -380,14 +384,13 @@ interface GPT4AllModelOptions extends BuiltInModelOptionsBase {
 	}
 }
 
-type GPT4AllTextCompletionModelOptions = TextCompletionModelOptions &
-	GPT4AllModelOptions
+type GPT4AllTextCompletionModelOptions = TextCompletionModelOptions & GPT4AllModelOptions
 
 type GPT4AllEmbeddingModelOptions = GPT4AllModelOptions & EmbeddingModelOptions
 
 export interface TransformersJsModel {
 	processor?: {
-  	url?: string
+		url?: string
 		file?: string
 	}
 	processorClass?: TransformersJsProcessorClass
@@ -396,12 +399,25 @@ export interface TransformersJsModel {
 	dtype?: Record<string, TransformersJsDataType> | TransformersJsDataType
 }
 
+export interface TransformersJsSpeechModel extends TransformersJsModel {
+	speakerEmbeddings: Record<string, {
+		url?: string
+		file?: string
+	}>
+	vocoderClass?: TransformersJsModelClass
+	vocoder?: {
+		url?: string
+		file?: string
+	}
+}
+
+// TODO improve, split these by task and create union?
 interface TransformersJsModelOptions extends BuiltInModelOptionsBase {
 	engine: 'transformers-js'
-	task: 'image-to-text' | 'speech-to-text' | 'text-completion' | 'embedding'
+	task: 'image-to-text' | 'speech-to-text' | 'text-to-speech' | 'text-completion' | 'embedding'
 	textModel?: TransformersJsModel
 	visionModel?: TransformersJsModel
-	speechModel?: TransformersJsModel
+	speechModel?: TransformersJsSpeechModel
 	device?: {
 		gpu?: boolean | 'auto' | (string & {})
 	}
@@ -485,4 +501,8 @@ export interface EngineImageToImageResult {
 
 export interface EngineSpeechToTextResult {
 	text: string
+}
+
+export interface EngineTextToSpeechResult {
+	audio: Audio
 }

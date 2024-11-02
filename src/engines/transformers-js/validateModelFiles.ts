@@ -1,6 +1,13 @@
 import fs from 'node:fs'
-import { AutoModel, AutoProcessor, AutoTokenizer } from '@huggingface/transformers'
-import { TransformersJsModel } from '#package/types/index.js'
+import {
+	AutoModel,
+	AutoProcessor,
+	AutoTokenizer,
+	TextToAudioPipeline,
+	TextToAudioPipelineConstructorArgs,
+	TextToAudioPipelineType,
+} from '@huggingface/transformers'
+import { TransformersJsModel, TransformersJsSpeechModel } from '#package/types/index.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
 import { TransformersJsModelConfig } from './engine.js'
 import { parseHuggingfaceModelIdAndBranch, remoteFileExists } from './util.js'
@@ -81,16 +88,86 @@ async function validateProcessor(
 	return undefined
 }
 
+async function validateVocoder(
+	modelOpts: TransformersJsSpeechModel,
+	config: TransformersJsModelConfig,
+	modelPath: string,
+): Promise<string | undefined> {
+	const vocoderClass = modelOpts.vocoderClass ?? AutoModel
+	if (modelOpts.vocoder) {
+		const vocoderPath = resolveModelFileLocation({
+			url: modelOpts.vocoder.url,
+			filePath: modelOpts.vocoder.file,
+			modelsCachePath: config.modelsCachePath,
+		})
+		try {
+			await vocoderClass.from_pretrained(vocoderPath, {
+				local_files_only: true,
+			})
+		} catch (error) {
+			return `Failed to load vocoder (${error})`
+		}
+	}
+	return undefined
+}
+
+async function validateModelComponents(
+	modelOpts: TransformersJsModel,
+	config: TransformersJsModelConfig,
+	modelPath: string,
+) {
+	const componentValidationPromises = [
+		validateModel(modelOpts, config, modelPath),
+		validateTokenizer(modelOpts, config, modelPath),
+		validateProcessor(modelOpts, config, modelPath),
+	]
+
+	if ('vocoder' in modelOpts) {
+		componentValidationPromises.push(validateVocoder(modelOpts as TransformersJsSpeechModel, config, modelPath))
+	}
+
+	const [model, tokenizer, processor, vocoder] = await Promise.all(componentValidationPromises)
+	const result: ComponentValidationErrors = {}
+	if (model) result.model = model
+	if (tokenizer) result.tokenizer = tokenizer
+	if (processor) result.processor = processor
+	if (vocoder) result.vocoder = vocoder
+	return result
+}
+
+async function validateSpeechModel(
+	modelOpts: TransformersJsSpeechModel,
+	config: TransformersJsModelConfig,
+	modelPath: string,
+) {
+	if (modelOpts.speakerEmbeddings) {
+		
+		for (const voice of Object.values(modelOpts.speakerEmbeddings)) {
+			const speakerEmbeddingsPath = resolveModelFileLocation({
+				url: voice.url,
+				filePath: voice.file,
+				modelsCachePath: config.modelsCachePath,
+			})
+			if (!fs.existsSync(speakerEmbeddingsPath)) {
+				return `Speaker embeddings file does not exist: ${speakerEmbeddingsPath}`
+			}
+		}
+	}
+	return validateModelComponents(modelOpts, config, modelPath)
+}
+
 interface ComponentValidationErrors {
 	model?: string
 	tokenizer?: string
 	processor?: string
+	vocoder?: string
 }
 
 interface ModelValidationErrors {
 	textModel?: ComponentValidationErrors
 	visionModel?: ComponentValidationErrors
 	speechModel?: ComponentValidationErrors
+	vocoderModel?: ComponentValidationErrors
 }
 
 export interface ModelValidationResult {
@@ -112,35 +189,16 @@ export async function validateModelFiles(
 		modelPath += '/'
 	}
 
-	const validateModelComponents = async (modelOpts: TransformersJsModel) => {
-		const componentValidationPromises = [
-			validateModel(modelOpts, config, modelPath),
-			validateTokenizer(modelOpts, config, modelPath),
-			validateProcessor(modelOpts, config, modelPath),
-		]
-		
-
-		// if (modelOpts.processor) {
-		// 	componentValidationPromises.push(validateProcessor(modelOpts, config, modelPath))
-		// }
-		const [model, tokenizer, processor] = await Promise.all(componentValidationPromises)
-		const result: ComponentValidationErrors = {}
-		if (model) result.model = model
-		if (tokenizer) result.tokenizer = tokenizer
-		if (processor) result.processor = processor
-		return result
-	}
-
 	const modelValidationPromises: any = {}
 	const noModelConfigured = !config.textModel && !config.visionModel && !config.speechModel
 	if (config.textModel || noModelConfigured) {
-		modelValidationPromises.textModel = validateModelComponents(config.textModel || {})
+		modelValidationPromises.textModel = validateModelComponents(config.textModel || {}, config, modelPath)
 	}
 	if (config.visionModel) {
-		modelValidationPromises.visionModel = validateModelComponents(config.visionModel)
+		modelValidationPromises.visionModel = validateModelComponents(config.visionModel, config, modelPath)
 	}
 	if (config.speechModel) {
-		modelValidationPromises.speechModel = validateModelComponents(config.speechModel)
+		modelValidationPromises.speechModel = validateSpeechModel(config.speechModel, config, modelPath)
 	}
 
 	await Promise.all(Object.values(modelValidationPromises))
@@ -156,6 +214,11 @@ export async function validateModelFiles(
 	const speechModelErrors = await modelValidationPromises.speechModel
 	if (speechModelErrors && Object.keys(speechModelErrors).length) {
 		validationErrors.speechModel = speechModelErrors
+	}
+
+	const vocoderModelErrors = await modelValidationPromises.vocoderModel
+	if (vocoderModelErrors && Object.keys(vocoderModelErrors).length) {
+		validationErrors.vocoderModel = vocoderModelErrors
 	}
 
 	if (Object.keys(validationErrors).length > 0) {
