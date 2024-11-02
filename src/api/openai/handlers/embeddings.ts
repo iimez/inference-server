@@ -5,10 +5,11 @@ import { parseJSONRequestBody } from '#package/api/parseJSONRequestBody.js'
 import { omitEmptyValues } from '#package/lib/util.js'
 import { ModelServer } from '#package/server.js'
 
+// handler for v1/embeddings
+// https://platform.openai.com/docs/api-reference/embeddings
+
 type OpenAIEmbeddingsParams = OpenAI.EmbeddingCreateParams
 
-// v1/embeddings
-// https://platform.openai.com/docs/api-reference/embeddings
 export function createEmbeddingsHandler(modelServer: ModelServer) {
 	return async (req: IncomingMessage, res: ServerResponse) => {
 		let args: OpenAIEmbeddingsParams

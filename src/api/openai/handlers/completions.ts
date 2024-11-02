@@ -6,6 +6,9 @@ import { parseJSONRequestBody } from '#package/api/parseJSONRequestBody.js'
 import { omitEmptyValues } from '#package/lib/util.js'
 import { finishReasonMap } from '../enums.js'
 
+// handler for v1/completions
+// https://platform.openai.com/docs/api-reference/completions/create
+
 interface OpenAICompletionParams
 	extends Omit<OpenAI.CompletionCreateParamsStreaming, 'stream'> {
 	stream?: boolean
@@ -18,8 +21,6 @@ interface OpenAICompletionChunk extends OpenAI.Completions.Completion {
 	usage?: OpenAI.CompletionUsage
 }
 
-// v1/completions
-// https://platform.openai.com/docs/api-reference/completions/create
 export function createCompletionHandler(modelServer: ModelServer) {
 	return async (req: IncomingMessage, res: ServerResponse) => {
 		let args: OpenAICompletionParams

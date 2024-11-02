@@ -14,6 +14,9 @@ import { omitEmptyValues } from '#package/lib/util.js'
 import { loadImageFromUrl } from '#package/lib/loadImage.js'
 import { finishReasonMap, messageRoleMap } from '../enums.js'
 
+// handler for v1/chat/completions
+// https://platform.openai.com/docs/api-reference/chat/create
+
 interface OpenAIChatCompletionParams
 	extends Omit<OpenAI.ChatCompletionCreateParamsStreaming, 'stream'> {
 	stream?: boolean
@@ -119,8 +122,6 @@ function createResponseMessageContent(
 	return text
 }
 
-// v1/chat/completions
-// https://platform.openai.com/docs/api-reference/chat/create
 export function createChatCompletionHandler(modelServer: ModelServer) {
 	return async (req: IncomingMessage, res: ServerResponse) => {
 		let args: OpenAIChatCompletionParams
