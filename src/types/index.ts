@@ -26,6 +26,7 @@ export type ModelTaskType =
 	| 'text-to-image'
 	| 'speech-to-text'
 	| 'text-to-speech'
+	| 'object-detection'
 
 export interface ModelOptionsBase {
 	engine: BuiltInEngineName | (string & {})
@@ -158,8 +159,8 @@ export interface TransformersJsModel {
 	dtype?: Record<string, TransformersJsDataType> | TransformersJsDataType
 }
 
-export interface TransformersJsSpeechModel extends TransformersJsModel {
-	speakerEmbeddings: Record<
+export interface TransformersJsSpeechModel {
+	speakerEmbeddings?: Record<
 		string,
 		| {
 				url?: string
@@ -175,12 +176,12 @@ export interface TransformersJsSpeechModel extends TransformersJsModel {
 }
 
 // TODO improve, split these by task and create union?
-interface TransformersJsModelOptions extends BuiltInModelOptionsBase {
+interface TransformersJsModelOptions extends BuiltInModelOptionsBase, TransformersJsModel, TransformersJsSpeechModel {
 	engine: 'transformers-js'
-	task: 'image-to-text' | 'speech-to-text' | 'text-to-speech' | 'text-completion' | 'embedding'
+	task: 'image-to-text' | 'speech-to-text' | 'text-to-speech' | 'text-completion' | 'embedding' | 'object-detection'
 	textModel?: TransformersJsModel
 	visionModel?: TransformersJsModel
-	speechModel?: TransformersJsSpeechModel
+	speechModel?: TransformersJsModel & TransformersJsSpeechModel
 	device?: {
 		gpu?: boolean | 'auto' | (string & {})
 	}

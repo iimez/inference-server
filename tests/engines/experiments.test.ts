@@ -11,6 +11,7 @@ import { ChatWithVisionEngine } from '#package/experiments/ChatWithVision.js'
 import { VoiceFunctionCallEngine } from '#package/experiments/VoiceFunctionCall.js'
 import { createChatCompletion } from '../util'
 import { loadImageFromUrl } from '#package/lib/loadImage.js'
+import { loadAudioFromFile } from '#package/lib/loadAudio.js'
 
 suite('chat with vision', () => {
 	// florence2 generates a description of the image and passes it to phi3
@@ -34,14 +35,12 @@ suite('chat with vision', () => {
 				url: 'https://huggingface.co/onnx-community/Florence-2-large-ft',
 				engine: 'transformers-js',
 				task: 'image-to-text',
-				visionModel: {
-					modelClass: Florence2ForConditionalGeneration,
-					dtype: {
-						embed_tokens: 'fp16',
-						vision_encoder: 'fp32',
-						encoder_model: 'fp16',
-						decoder_model_merged: 'q4',
-					},
+				modelClass: Florence2ForConditionalGeneration,
+				dtype: {
+					embed_tokens: 'fp16',
+					vision_encoder: 'fp32',
+					encoder_model: 'fp16',
+					decoder_model_merged: 'q4',
 				},
 				device: {
 					gpu: false,
@@ -140,12 +139,10 @@ suite('voice functions', () => {
 				task: 'speech-to-text',
 				prepare: 'async',
 				minInstances: 1,
-				speechModel: {
-					modelClass: WhisperForConditionalGeneration,
-					dtype: {
-						encoder_model: 'fp32', // 'fp16' works too
-						decoder_model_merged: 'q4', // or 'fp32' ('fp16' is broken)
-					},
+				modelClass: WhisperForConditionalGeneration,
+				dtype: {
+					encoder_model: 'fp16', // 'fp16' works too
+					decoder_model_merged: 'q4', // or 'fp32' ('fp16' is broken)
 				},
 				device: {
 					gpu: false,
@@ -157,6 +154,9 @@ suite('voice functions', () => {
 				url: 'https://huggingface.co/meetkai/functionary-small-v3.2-GGUF/blob/main/functionary-small-v3.2.Q4_0.gguf',
 				sha256:
 					'c0afdbbffa498a8490dea3401e34034ac0f2c6e337646513a7dbc04fcef1c3a4',
+				// device: {
+				// 	gpu: 'vulkan',
+				// }
 			},
 		},
 	})
@@ -168,13 +168,14 @@ suite('voice functions', () => {
 		await modelServer.stop()
 	})
 	it('can hear', async () => {
-		const result = await modelServer.processSpeechToTextTask({
-			file: 'tests/fixtures/tenabra.mp3',
-			model: 'voice-function-calling',
-			// model: 'whisper-base',
+		const audio = await loadAudioFromFile('tests/fixtures/tenabra.mp3', {
+			sampleRate: 16000,
 		})
-		console.debug({ result })
+		const result = await modelServer.processSpeechToTextTask({
+			model: 'voice-function-calling',
+			audio,
+		})
 		expect(result.text).toContain('Risa')
 		expect(searchSources).toMatch('all databases')
-	})
+	}, 120000)
 })

@@ -22,6 +22,7 @@ import {
 	ModelConfigBase,
 	TextToImageRequest,
 	ImageToImageRequest,
+	ObjectRecognitionRequest,
 } from '#package/types/index.js'
 import { Logger, LogLevel, createSublogger, LogLevels } from '#package/lib/logger.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
@@ -264,6 +265,14 @@ export class ModelServer {
 	async processImageToImageTask(args: ImageToImageRequest, options?: ProcessingOptions) {
 		const lock = await this.requestInstance(args)
 		const task = lock.instance.processImageToImageTask(args, options)
+		const result = await task.result
+		await lock.release()
+		return result
+	}
+	
+	async processObjectRecognitionTask(args: ObjectRecognitionRequest, options?: ProcessingOptions) {
+		const lock = await this.requestInstance(args)
+		const task = lock.instance.processObjectRecognitionTask(args, options)
 		const result = await task.result
 		await lock.release()
 		return result

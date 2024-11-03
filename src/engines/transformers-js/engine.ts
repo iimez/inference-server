@@ -15,6 +15,8 @@ import {
 	TransformersJsModel,
 	TextEmbeddingInput,
 	TransformersJsSpeechModel,
+	EngineObjectRecognitionArgs,
+	ObjectRecognitionResult,
 } from '#package/types/index.js'
 import {
 	env,
@@ -28,21 +30,43 @@ import {
 	PreTrainedModel,
 	PreTrainedTokenizer,
 	Tensor,
+	SpeechT5ForTextToSpeech,
+	WhisperForConditionalGeneration,
 } from '@huggingface/transformers'
 import { LogLevels } from '#package/lib/logger.js'
-import { decodeAudio } from '#package/lib/decodeAudio.js'
+import { resampleAudioBuffer } from '#package/lib/loadAudio.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
 import { moveDirectoryContents } from '#package/lib/moveDirectoryContents.js'
-import { TransformersJsModelComponents, SpeechModelInstance } from './types.js'
 import { fetchBuffer, parseHuggingfaceModelIdAndBranch, remoteFileExists } from './util.js'
 import { validateModelFiles, ModelValidationResult } from './validateModelFiles.js'
 import { acquireModelFileLocks } from './acquireModelFileLocks.js'
 import { loadModelComponents, loadSpeechModelComponents } from './loadModelComponents.js'
 
+export interface TransformersJsModelComponents<TModel = PreTrainedModel> {
+	// model?: PreTrainedModel | TextToSpeechModel | SpeechToTextModel
+	model?: TModel
+	processor?: Processor
+	tokenizer?: PreTrainedTokenizer
+}
+
+export interface TextToSpeechModel {
+	generate_speech: SpeechT5ForTextToSpeech['generate_speech']
+}
+
+export interface SpeechToTextModel {
+	generate: WhisperForConditionalGeneration['generate']
+}
+
+export interface SpeechModelComponents extends TransformersJsModelComponents<TextToSpeechModel | SpeechToTextModel> {
+	vocoder?: PreTrainedModel
+	speakerEmbeddings?: Record<string, Float32Array>
+}
+
 interface TransformersJsInstance {
-	textModel?: TransformersJsModelComponents
-	visionModel?: TransformersJsModelComponents
-	speechModel?: SpeechModelInstance
+	primary?: TransformersJsModelComponents
+	text?: TransformersJsModelComponents
+	vision?: TransformersJsModelComponents
+	speech?: SpeechModelComponents
 }
 
 interface ModelFile {
@@ -56,7 +80,7 @@ interface ModelFile {
 // 	files: ModelFile[]
 // }
 
-export interface TransformersJsModelConfig extends ModelConfig {
+export interface TransformersJsModelConfig extends ModelConfig, TransformersJsModel, TransformersJsSpeechModel {
 	location: string
 	url: string
 	textModel?: TransformersJsModel
@@ -81,7 +105,6 @@ function configureEnvironment(modelsPath: string) {
 	env.localModelPath = ''
 	didConfigureEnvironment = true
 }
-
 
 async function disposeModelComponents(modelComponents: TransformersJsModelComponents) {
 	if (modelComponents.model && 'dispose' in modelComponents.model) {
@@ -117,7 +140,7 @@ export async function prepareModel(
 	})
 
 	const downloadModelFiles = async (
-		modelOpts: TransformersJsModel | TransformersJsSpeechModel,
+		modelOpts: TransformersJsModel | (TransformersJsModel & TransformersJsSpeechModel),
 		{ modelId, branch }: { modelId: string; branch: string },
 		requiredComponents: string[] = ['model', 'tokenizer', 'processor', 'vocoder'],
 	) => {
@@ -215,12 +238,16 @@ export async function prepareModel(
 		const directoriesToCopy: Record<string, string> = {}
 		const modelCacheDir = path.join(env.cacheDir, modelId)
 		directoriesToCopy[modelCacheDir] = config.location
-		const noModelConfigured = !config.textModel && !config.visionModel && !config.speechModel
-		if (config.textModel || noModelConfigured) {
+		// const noModelConfigured = !config.textModel && !config.visionModel && !config.speechModel
+		const requiredComponents = validationResult.errors?.primaryModel
+			? Object.keys(validationResult.errors.primaryModel)
+			: undefined
+		modelDownloadPromises.push(downloadModelFiles(config, { modelId, branch }, requiredComponents))
+		if (config.textModel) {
 			const requiredComponents = validationResult.errors?.textModel
 				? Object.keys(validationResult.errors.textModel)
 				: undefined
-			modelDownloadPromises.push(downloadModelFiles(config.textModel || {}, { modelId, branch }, requiredComponents))
+			modelDownloadPromises.push(downloadModelFiles(config.textModel, { modelId, branch }, requiredComponents))
 		}
 		if (config.visionModel) {
 			const requiredComponents = validationResult.errors?.visionModel
@@ -286,7 +313,6 @@ export async function prepareModel(
 			return
 		}
 		// move all downloads to their final location
-		// console.debug('Copying directories', directoriesToCopy)
 		await Promise.all(
 			Object.entries(directoriesToCopy).map(([from, to]) => {
 				if (fs.existsSync(from)) {
@@ -354,11 +380,12 @@ export async function prepareModel(
 }
 
 export async function createInstance({ config, log }: EngineContext<TransformersJsModelConfig>, signal?: AbortSignal) {
-	const modelLoadPromises = []
-	const noModelConfigured = !config.textModel && !config.visionModel && !config.speechModel
+	const modelLoadPromises: Promise<unknown>[] = []
+	// const noModelConfigured = !config.textModel && !config.visionModel && !config.speechModel
 
-	if (config.textModel || noModelConfigured) {
-		modelLoadPromises.push(loadModelComponents(config.textModel || {}, config))
+	modelLoadPromises.push(loadModelComponents(config, config))
+	if (config.textModel) {
+		modelLoadPromises.push(loadModelComponents(config.textModel, config))
 	} else {
 		modelLoadPromises.push(Promise.resolve(undefined))
 	}
@@ -375,10 +402,10 @@ export async function createInstance({ config, log }: EngineContext<Transformers
 
 	const models = await Promise.all(modelLoadPromises)
 	const instance: TransformersJsInstance = {
-		textModel: models[0],
-		visionModel: models[1],
-		speechModel: models[2],
-		// vocoderModel: models[3],
+		primary: models[0] as TransformersJsModelComponents,
+		text: models[1] as TransformersJsModelComponents,
+		vision: models[2] as TransformersJsModelComponents,
+		speech: models[3] as (SpeechModelComponents & TransformersJsModelComponents),
 	}
 
 	// TODO preload whisper / any speech to text?
@@ -392,14 +419,14 @@ export async function createInstance({ config, log }: EngineContext<Transformers
 
 export async function disposeInstance(instance: TransformersJsInstance) {
 	const disposePromises = []
-	if (instance.textModel) {
-		disposePromises.push(disposeModelComponents(instance.textModel))
+	if (instance.primary) {
+		disposePromises.push(disposeModelComponents(instance.primary))
 	}
-	if (instance.visionModel) {
-		disposePromises.push(disposeModelComponents(instance.visionModel))
+	if (instance.vision) {
+		disposePromises.push(disposeModelComponents(instance.vision))
 	}
-	if (instance.speechModel) {
-		disposePromises.push(disposeModelComponents(instance.speechModel))
+	if (instance.speech) {
+		disposePromises.push(disposeModelComponents(instance.speech as TransformersJsModelComponents))
 	}
 	await Promise.all(disposePromises)
 }
@@ -412,19 +439,19 @@ export async function processTextCompletionTask(
 	if (!request.prompt) {
 		throw new Error('Prompt is required for text completion.')
 	}
-	if (!(instance.textModel?.tokenizer && instance.textModel?.model)) {
+	if (!(instance.primary?.tokenizer && instance.primary?.model)) {
 		throw new Error('Text model is not loaded.')
 	}
-	if (!('generate' in instance.textModel.model)) {
+	if (!('generate' in instance.primary.model)) {
 		throw new Error('Text model does not support generation.')
 	}
-	const inputTokens = instance.textModel.tokenizer(request.prompt)
-	const outputTokens = await instance.textModel.model.generate({
+	const inputTokens = instance.primary.tokenizer(request.prompt)
+	const outputTokens = await instance.primary.model.generate({
 		...inputTokens,
 		max_new_tokens: request.maxTokens ?? 128,
 	})
 	// @ts-ignore
-	const outputText = instance.textModel.tokenizer.batch_decode(outputTokens, {
+	const outputText = instance.primary.tokenizer.batch_decode(outputTokens, {
 		skip_special_tokens: true,
 	})
 
@@ -489,30 +516,32 @@ export async function processEmbeddingTask(
 		let result
 		let modelInputs
 		if (embeddingInput.type === 'text') {
-			if (!instance.textModel?.tokenizer || !instance.textModel?.model) {
+			const modelComponents = instance.text || instance.primary
+			if (!modelComponents?.tokenizer || !modelComponents?.model) {
 				throw new Error('Text model is not loaded.')
 			}
-			modelInputs = instance.textModel.tokenizer(embeddingInput.content, {
+			modelInputs = modelComponents.tokenizer(embeddingInput.content, {
 				padding: true, // pads input if it is shorter than context window
 				truncation: true, // truncates input if it exceeds context window
 			})
 			inputTokens += modelInputs.input_ids.size
 			// @ts-ignore TODO check _call
-			const modelOutputs = await instance.textModel.model(modelInputs)
+			const modelOutputs = await instance.primary.model(modelInputs)
 			result =
 				modelOutputs.last_hidden_state ??
 				modelOutputs.logits ??
 				modelOutputs.token_embeddings ??
 				modelOutputs.text_embeds
 		} else if (embeddingInput.type === 'image') {
-			if (!instance.visionModel?.processor || !instance.visionModel?.model) {
+			const modelComponents = instance.vision || instance.primary
+			if (!modelComponents?.processor || !modelComponents?.model) {
 				throw new Error('Vision model is not loaded.')
 			}
 			const { data, info } = await embeddingInput.content.handle.raw().toBuffer({ resolveWithObject: true })
 			const image = new RawImage(new Uint8ClampedArray(data), info.width, info.height, info.channels)
-			modelInputs = await instance.visionModel.processor!(image)
+			modelInputs = await modelComponents.processor!(image)
 			// @ts-ignore TODO check _call
-			const modelOutputs = await instance.visionModel.model(modelInputs)
+			const modelOutputs = await instance.vision.model(modelInputs)
 			result = modelOutputs.last_hidden_state ?? modelOutputs.logits ?? modelOutputs.image_embeds
 		}
 
@@ -547,25 +576,25 @@ export async function processImageToTextTask(
 		return
 	}
 
-	const model = instance.visionModel || instance.textModel
-	if (!(model && model.tokenizer && model.processor && model.model)) {
+	const modelComponents = instance.vision || instance.primary
+	if (!(modelComponents && modelComponents.tokenizer && modelComponents.processor && modelComponents.model)) {
 		throw new Error('No model loaded')
 	}
-	if (!('generate' in model.model)) {
+	if (!('generate' in modelComponents.model)) {
 		throw new Error('Model does not support generation')
 	}
 	let textInputs = {}
 	if (request.prompt) {
-		textInputs = model!.tokenizer(request.prompt)
+		textInputs = modelComponents!.tokenizer(request.prompt)
 	}
-	const imageInputs = await model.processor(image)
-	const outputTokens = await model.model.generate({
+	const imageInputs = await modelComponents.processor(image)
+	const outputTokens = await modelComponents.model.generate({
 		...textInputs,
 		...imageInputs,
 		max_new_tokens: request.maxTokens ?? 128,
 	})
 	// @ts-ignore
-	const outputText = model.tokenizer.batch_decode(outputTokens, {
+	const outputText = modelComponents.tokenizer.batch_decode(outputTokens, {
 		skip_special_tokens: true,
 	})
 
@@ -574,23 +603,7 @@ export async function processImageToTextTask(
 	}
 }
 
-async function readAudioFile(filePath: string) {
-	const WHISPER_SAMPLING_RATE = 16_000
-	const MAX_AUDIO_LENGTH = 30 // seconds
-	const MAX_SAMPLES = WHISPER_SAMPLING_RATE * MAX_AUDIO_LENGTH
-	// Read the file into a buffer
-	const fileBuffer = fs.readFileSync(filePath)
 
-	// Decode the audio data
-	let decodedAudio = await decodeAudio(fileBuffer, WHISPER_SAMPLING_RATE)
-
-	// Trim the audio data if it exceeds MAX_SAMPLES
-	if (decodedAudio.length > MAX_SAMPLES) {
-		decodedAudio = decodedAudio.slice(-MAX_SAMPLES)
-	}
-
-	return decodedAudio
-}
 
 // see examples
 // https://huggingface.co/docs/transformers.js/guides/node-audio-processing
@@ -600,10 +613,14 @@ export async function processSpeechToTextTask(
 	instance: TransformersJsInstance,
 	signal?: AbortSignal,
 ) {
-	if (!(instance.speechModel?.tokenizer && instance.speechModel?.model)) {
+	if (!request.audio) {
+		throw new Error('No audio provided')
+	}
+	const modelComponents = instance.speech || instance.primary
+	if (!(modelComponents?.tokenizer && modelComponents?.model)) {
 		throw new Error('No speech model loaded')
 	}
-	const streamer = new TextStreamer(instance.speechModel.tokenizer, {
+	const streamer = new TextStreamer(modelComponents.tokenizer, {
 		skip_prompt: true,
 		// skip_special_tokens: true,
 		callback_function: (output: any) => {
@@ -612,17 +629,23 @@ export async function processSpeechToTextTask(
 			}
 		},
 	})
-	let inputs
-	if (request.file) {
-		const audio = await readAudioFile(request.file)
-		inputs = await instance.speechModel.processor!(audio)
-	}
 
-	if (!('generate' in instance.speechModel.model)) {
+	let inputSamples = request.audio.samples
+	
+	if (request.audio.sampleRate !== 16000) {
+		inputSamples = await resampleAudioBuffer(request.audio.samples, {
+			inputSampleRate: request.audio.sampleRate,
+			outputSampleRate: 16000,
+			nChannels: 1,
+		})
+	}
+	const inputs = await modelComponents.processor!(inputSamples)
+
+	if (!('generate' in modelComponents.model)) {
 		throw new Error('Speech model class does not support text generation')
 	}
 
-	const outputs = await instance.speechModel.model.generate({
+	const outputs = await modelComponents.model.generate({
 		...inputs,
 		max_new_tokens: request.maxTokens ?? 128,
 		language: request.language ?? 'en',
@@ -630,7 +653,7 @@ export async function processSpeechToTextTask(
 	})
 
 	// @ts-ignore
-	const outputText = instance.speechModel.tokenizer.batch_decode(outputs, {
+	const outputText = modelComponents.tokenizer.batch_decode(outputs, {
 		skip_special_tokens: true,
 	})
 
@@ -645,43 +668,47 @@ export async function processTextToSpeechTask(
 	instance: TransformersJsInstance,
 	signal?: AbortSignal,
 ) {
-	if (!instance.speechModel || !instance.speechModel?.model || !instance.speechModel?.tokenizer) {
+	const modelComponents = instance.speech || instance.primary
+	if (!modelComponents?.model || !modelComponents?.tokenizer) {
 		throw new Error('No speech model loaded')
 	}
 
-	if (!('generate_speech' in instance.speechModel.model)) {
-		console.debug(instance.speechModel.model)
+	if (!('generate_speech' in modelComponents.model)) {
 		throw new Error('The model does not support speech generation')
 	}
 
-	const encodedInputs = instance.speechModel.tokenizer(request.text, {
+	const encodedInputs = modelComponents.tokenizer(request.text, {
 		padding: true,
 		truncation: true,
 	})
+	
+	if (!('speakerEmbeddings' in modelComponents)) {
+		throw new Error('No speaker embeddings supplied')
+	}
+	
 
-	let speakerEmbeddings =
-		instance.speechModel.speakerEmbeddings?.[Object.keys(instance.speechModel.speakerEmbeddings)[0]]
+	let speakerEmbeddings = modelComponents.speakerEmbeddings?.[Object.keys(modelComponents.speakerEmbeddings)[0]]
 
 	if (!speakerEmbeddings) {
 		throw new Error('No speaker embeddings supplied')
 	}
 
 	if (request.voice) {
-		speakerEmbeddings = instance.speechModel.speakerEmbeddings?.[request.voice]
+		speakerEmbeddings = modelComponents.speakerEmbeddings?.[request.voice]
 		if (!speakerEmbeddings) {
 			throw new Error(`No speaker embeddings found for voice ${request.voice}`)
 		}
 	}
 	const speakerEmbeddingsTensor = new Tensor('float32', speakerEmbeddings, [1, speakerEmbeddings.length])
-	const outputs = await instance.speechModel.model.generate_speech(encodedInputs.input_ids, speakerEmbeddingsTensor, {
-		vocoder: instance.speechModel.vocoder,
+	const outputs = await modelComponents.model.generate_speech(encodedInputs.input_ids, speakerEmbeddingsTensor, {
+		vocoder: modelComponents.vocoder,
 	})
 
 	if (!outputs.waveform) {
 		throw new Error('No waveform generated')
 	}
 
-	const sampleRate = instance.speechModel.processor!.feature_extractor.config.sampling_rate
+	const sampleRate = modelComponents.processor!.feature_extractor.config.sampling_rate
 
 	return {
 		audio: {
@@ -689,5 +716,98 @@ export async function processTextToSpeechTask(
 			sampleRate,
 			channels: 1,
 		},
+	}
+}
+
+// ObjectDetectionPipeline https://github.com/huggingface/transformers.js/blob/6bd45ac66a861f37f3f95b81ac4b6d796a4ee231/src/pipelines.js#L2336
+// ZeroShotObjectDetection https://github.com/huggingface/transformers.js/blob/6bd45ac66a861f37f3f95b81ac4b6d796a4ee231/src/pipelines.js#L2471
+export async function processObjectRecognitionTask(
+	{ request, config, log }: EngineObjectRecognitionArgs,
+	instance: TransformersJsInstance,
+	signal?: AbortSignal,
+) {
+	if (!request.image) {
+		throw new Error('No image provided')
+	}
+	const { data, info } = await request.image.handle.raw().toBuffer({ resolveWithObject: true })
+	const image = new RawImage(new Uint8ClampedArray(data), info.width, info.height, info.channels)
+
+	if (signal?.aborted) {
+		return
+	}
+
+	const modelComponents = instance.vision || instance.primary
+	if (!(modelComponents && modelComponents.model)) {
+		throw new Error('No model loaded')
+	}
+
+	const results: ObjectRecognitionResult[] = []
+
+	if (request?.labels?.length) {
+		if (!modelComponents.tokenizer || !modelComponents.processor) {
+			throw new Error('Model components not loaded.')
+		}
+		const labelInputs = modelComponents.tokenizer(request.labels, {
+			padding: true,
+			truncation: true,
+		})
+		const imageInputs = await modelComponents.processor([image])
+		const output = await modelComponents.model({
+			...labelInputs,
+			pixel_values: imageInputs.pixel_values[0].unsqueeze_(0),
+		})
+
+		// @ts-ignore
+		const processed = modelComponents.processor.feature_extractor.post_process_object_detection(
+			output,
+			request.threshold ?? 0.5,
+			[[image.height, image.width]],
+			true,
+		)[0]
+		for (let i = 0; i < processed.boxes.length; i++) {
+			results.push({
+				score: processed.scores[i],
+				label: request.labels[processed.classes[i]],
+				box: {
+					x: processed.boxes[i][0],
+					y: processed.boxes[i][1],
+					width: processed.boxes[i][2] - processed.boxes[i][0],
+					height: processed.boxes[i][3] - processed.boxes[i][1],
+				},
+			})
+		}
+	} else {
+		// @ts-ignore
+		const { pixel_values, pixel_mask } = await modelComponents.processor.feature_extractor([image])
+		const output = await modelComponents.model({ pixel_values, pixel_mask })
+		// @ts-ignore
+		const processed = modelComponents.processor.feature_extractor.post_process_object_detection(
+			output,
+			request.threshold ?? 0.5,
+			[[image.height, image.width]],
+			null,
+			false,
+		)
+		// Add labels
+		// @ts-ignore
+		const id2label = modelComponents.model.config.id2label
+		for (const batch of processed) {
+			for (let i = 0; i < batch.boxes.length; i++) {
+				results.push({
+					score: batch.scores[i],
+					label: id2label[batch.classes[i]],
+					box: {
+						x: batch.boxes[i][0],
+						y: batch.boxes[i][1],
+						width: batch.boxes[i][2] - batch.boxes[i][0],
+						height: batch.boxes[i][3] - batch.boxes[i][1],
+					},
+				})
+			}
+		}
+	}
+
+	return {
+		objects: results,
 	}
 }

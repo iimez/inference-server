@@ -17,6 +17,7 @@ import {
 	EngineTextCompletionResult,
 	TextToImageRequest,
 	ImageToImageRequest,
+	ObjectRecognitionRequest,
 } from '#package/types/index.js'
 import { calculateContextIdentity } from '#package/lib/calculateContextIdentity.js'
 import { LogLevels, Logger, createLogger, withLogMeta } from '#package/lib/logger.js'
@@ -698,6 +699,57 @@ export class ModelInstance<TEngineRef = unknown> {
 					taskLogger(LogLevels.warn, 'TextToImage task timed out')
 				}
 				taskLogger(LogLevels.verbose, 'TextToImage task done', {
+					elapsed: timeElapsed,
+				})
+				return result
+			})
+			.catch((error) => {
+				taskLogger(LogLevels.error, 'Task failed - ', {
+					error,
+				})
+				throw error
+			})
+
+		return {
+			id,
+			model: this.modelId,
+			createdAt: new Date(),
+			cancel: controller.cancel,
+			result,
+		}
+	}
+	
+	processObjectRecognitionTask(request: ObjectRecognitionRequest, options?: ProcessingOptions) {
+		if (!('processObjectRecognitionTask' in this.engine)) {
+			throw new Error(`Engine "${this.config.engine}" does not implement object recognition`)
+		}
+		this.lastUsed = Date.now()
+		const id = this.generateTaskId()
+		const taskLogger = withLogMeta(this.log, {
+			sequence: this.currentRequest!.sequence,
+			task: id,
+		})
+		const controller = this.createTaskController({
+			timeout: options?.timeout,
+			signal: options?.signal,
+		})
+		const taskBegin = process.hrtime.bigint()
+		const result = this.engine.processObjectRecognitionTask!(
+			{
+				request,
+				config: this.config,
+				log: taskLogger,
+			},
+			this.engineRef,
+			controller.signal,
+		)
+			.then((result) => {
+				const timeElapsed = elapsedMillis(taskBegin)
+				controller.complete()
+				if (controller.timeoutSignal.aborted) {
+					taskLogger(LogLevels.warn, 'ObjectRecognition task timed out')
+				}
+				taskLogger(LogLevels.verbose, 'ObjectRecognition task done', {
 					elapsed: timeElapsed,
 				})
 				return result

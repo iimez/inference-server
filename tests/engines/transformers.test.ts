@@ -1,17 +1,20 @@
 import { suite, test, expect, beforeAll, afterAll } from 'vitest'
 import { WaveFile } from 'wavefile'
-
+import { readFileSync, writeFileSync } from 'fs'
+import sharp from 'sharp'
 import { ModelServer } from '#package/server.js'
 import { cosineSimilarity } from '#package/lib/math.js'
 import { loadImageFromFile } from '#package/lib/loadImage.js'
+import { drawBoundingBoxes } from '#package/lib/drawBoundingBoxes.js'
+import { createPaddedCrop } from '#package/lib/createPaddedCrop.js'
 import {
 	CLIPTextModelWithProjection,
 	CLIPVisionModelWithProjection,
 	Florence2ForConditionalGeneration,
-	Florence2Processor,
 	SpeechT5ForTextToSpeech,
+	SpeechT5Model,
+	WhisperForConditionalGeneration,
 } from '@huggingface/transformers'
-import { readFileSync, writeFileSync } from 'fs'
 
 suite('basic', () => {
 	const modelServer = new ModelServer({
@@ -30,9 +33,7 @@ suite('basic', () => {
 				url: 'https://huggingface.co/jinaai/jina-clip-v1',
 				engine: 'transformers-js',
 				task: 'embedding',
-				textModel: {
-					modelClass: CLIPTextModelWithProjection,
-				},
+				modelClass: CLIPTextModelWithProjection,
 				visionModel: {
 					processor: {
 						url: 'https://huggingface.co/Xenova/clip-vit-base-patch32',
@@ -58,14 +59,12 @@ suite('basic', () => {
 				url: 'https://huggingface.co/onnx-community/Florence-2-large-ft',
 				engine: 'transformers-js',
 				task: 'image-to-text',
-				visionModel: {
-					modelClass: Florence2ForConditionalGeneration,
-					dtype: {
-						embed_tokens: 'fp16',
-						vision_encoder: 'fp32',
-						encoder_model: 'fp16',
-						decoder_model_merged: 'q4',
-					},
+				modelClass: Florence2ForConditionalGeneration,
+				dtype: {
+					embed_tokens: 'fp16',
+					vision_encoder: 'fp32',
+					encoder_model: 'fp16',
+					decoder_model_merged: 'q4',
 				},
 				device: {
 					gpu: false,
@@ -75,17 +74,46 @@ suite('basic', () => {
 				url: 'https://huggingface.co/Xenova/speecht5_tts',
 				engine: 'transformers-js',
 				task: 'text-to-speech',
-				speechModel: {
-				  modelClass: SpeechT5ForTextToSpeech,
-					vocoder: {
-						url: 'https://huggingface.co/Xenova/speecht5_hifigan',
-					},
-					speakerEmbeddings: {
-						defaultVoice: {
-							url: 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/speaker_embeddings.bin',
-						},
+				modelClass: SpeechT5ForTextToSpeech,
+				vocoder: {
+					url: 'https://huggingface.co/Xenova/speecht5_hifigan',
+				},
+				speakerEmbeddings: {
+					defaultVoice: {
+						url: 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/speaker_embeddings.bin',
 					},
 				},
+			},
+			'whisper-base': {
+				url: 'https://huggingface.co/onnx-community/whisper-base',
+				engine: 'transformers-js',
+				task: 'speech-to-text',
+				prepare: 'async',
+				minInstances: 1,
+				modelClass: WhisperForConditionalGeneration,
+				dtype: {
+					encoder_model: 'fp16',
+					decoder_model_merged: 'q4',
+				},
+				device: {
+					gpu: false,
+				},
+			},
+			'table-transformer-detection': {
+				url: 'https://huggingface.co/Xenova/table-transformer-detection',
+				engine: 'transformers-js',
+				task: 'object-detection',
+			},
+			'table-transformer-structure-recognition': {
+				url: 'https://huggingface.co/Xenova/table-transformer-structure-recognition',
+				engine: 'transformers-js',
+				task: 'object-detection',
+			},
+			'owlv2-base': {
+				url: 'https://huggingface.co/Xenova/owlv2-base-patch16-finetuned',
+				engine: 'transformers-js',
+				task: 'object-detection',
+				dtype: 'fp16',
 			},
 		},
 	})
@@ -96,15 +124,61 @@ suite('basic', () => {
 		await modelServer.stop()
 	})
 
-	test('text to speech', async () => {
-		const res = await modelServer.processTextToSpeechTask({
-			model: 'speecht5',
-			text: 'Hello, world!',
+	test('cat recognition', async () => {
+		const image = await loadImageFromFile('tests/fixtures/blue-cat.jpg')
+		const res = await modelServer.processObjectRecognitionTask({
+			model: 'owlv2-base',
+			image,
+			labels: ['cat', 'smurf'],
 		})
+		expect(res.objects).toBeTruthy()
+		// console.debug(res.objects)
+		expect(res.objects[0].label).toBe('cat')
+		// const testImage = await drawBoundingBoxes(image.handle, res.objects)
+		// await testImage.toFile('tests/fixtures/blue-cat-detected.png')
+	})
+
+	test('table recognition', async () => {
+		const image = await loadImageFromFile('tests/fixtures/table.png')
+		const tableRes = await modelServer.processObjectRecognitionTask({
+			model: 'table-transformer-detection',
+			image,
+		})
+		const tableObject = tableRes.objects[0]
+		expect(tableObject).toBeTruthy()
+		// padding because https://github.com/microsoft/table-transformer/issues/21
+		const paddedCrop = await createPaddedCrop(image.handle, tableObject.box, 40)
+		// await paddedCrop.toFile('tests/fixtures/table-detected.png')
+		const tableStructureRes = await modelServer.processObjectRecognitionTask({
+			model: 'table-transformer-structure-recognition',
+			image: {
+				handle: paddedCrop,
+				width: Math.round(tableObject.box.width) + 80,
+				height: Math.round(tableObject.box.height) + 80,
+				channels: image.channels,
+			},
+		})
+		expect(tableStructureRes.objects).toBeTruthy()
+		const tableRows = tableStructureRes.objects.filter((x) => x.label === 'table row')
+		expect(tableRows.length).toEqual(8)
+		// const imageWithBoundingBoxed = await drawBoundingBoxes(paddedCrop, tableRows)
+		// await imageWithBoundingBoxed.toFile('tests/fixtures/table-detected-rows.png')
+	})
+
+	test('text to speech to text', async () => {
+		const speechRes = await modelServer.processTextToSpeechTask({
+			model: 'speecht5',
+			text: 'Hello world, this is a test synthesizing speech.',
+		})
+		expect(speechRes.audio).toBeTruthy()
 		// const wav = new WaveFile();
-		// wav.fromScratch(res.audio.channels, res.audio.sampleRate, '32f', res.audio.samples);
+		// wav.fromScratch(speechRes.audio.channels, speechRes.audio.sampleRate, '32f', speechRes.audio.samples);
 		// writeFileSync('tests/fixtures/speecht5.wav', wav.toBuffer());
-		expect(res.audio).toBeTruthy()
+		const transcriptionRes = await modelServer.processSpeechToTextTask({
+			model: 'whisper-base',
+			audio: speechRes.audio,
+		})
+		expect(transcriptionRes.text.trim()).toEqual('Hello world, this is a test synthesizing speech.')
 	})
 
 	test('ocr single line', async () => {

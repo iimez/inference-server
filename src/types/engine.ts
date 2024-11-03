@@ -94,12 +94,13 @@ export interface ImageToImageRequest extends StableDiffusionRequest {
 export interface ObjectRecognitionRequest {
 	model: string
 	image: Image
+	threshold?: number
+	labels?: string[]
 }
 
 export interface SpeechToTextRequest {
 	model: string
-	url?: string
-	file?: string
+	audio: Audio
 	language?: string
 	prompt?: string
 	maxTokens?: number
@@ -175,8 +176,6 @@ export interface EngineTextToSpeechArgs<TModelConfig = unknown, TModelMeta = unk
 	onChunk?: (chunk: { text: string }) => void
 }
 
-
-
 export interface ProcessingOptions {
 	timeout?: number
 	signal?: AbortSignal
@@ -206,7 +205,7 @@ export interface EngineStartContext {
 }
 
 export interface ModelEngine<
-	TInstance = unknown,
+	TModelInstance = unknown,
 	TModelConfig extends ModelConfig = ModelConfig,
 	TModelMeta = unknown,
 > {
@@ -217,48 +216,53 @@ export interface ModelEngine<
 		onProgress?: (progress: FileDownloadProgress) => void,
 		signal?: AbortSignal,
 	) => Promise<TModelMeta>
-	createInstance: (ctx: EngineContext<TModelConfig, TModelMeta>, signal?: AbortSignal) => Promise<TInstance>
-	disposeInstance: (instance: TInstance) => Promise<void>
+	createInstance: (ctx: EngineContext<TModelConfig, TModelMeta>, signal?: AbortSignal) => Promise<TModelInstance>
+	disposeInstance: (instance: TModelInstance) => Promise<void>
 	processChatCompletionTask?: (
 		args: EngineChatCompletionArgs<TModelConfig, TModelMeta>,
-		instance: TInstance,
+		instance: TModelInstance,
 		signal?: AbortSignal,
 	) => Promise<EngineChatCompletionResult>
 	processTextCompletionTask?: (
 		args: EngineTextCompletionArgs<TModelConfig, TModelMeta>,
-		instance: TInstance,
+		instance: TModelInstance,
 		signal?: AbortSignal,
 	) => Promise<EngineTextCompletionResult>
 	processEmbeddingTask?: (
 		args: EngineEmbeddingArgs<TModelConfig, TModelMeta>,
-		instance: TInstance,
+		instance: TModelInstance,
 		signal?: AbortSignal,
 	) => Promise<EngineEmbeddingResult>
 	processImageToTextTask?: (
 		args: EngineImageToTextArgs<TModelConfig, TModelMeta>,
-		instance: TInstance,
+		instance: TModelInstance,
 		signal?: AbortSignal,
 	) => Promise<EngineImageToTextResult>
 	processSpeechToTextTask?: (
 		args: EngineSpeechToTextArgs<TModelConfig, TModelMeta>,
-		instance: TInstance,
+		instance: TModelInstance,
 		signal?: AbortSignal,
 	) => Promise<EngineSpeechToTextResult>
 	processTextToSpeechTask?: (
 		args: EngineTextToSpeechArgs<TModelConfig, TModelMeta>,
-		instance: TInstance,
+		instance: TModelInstance,
 		signal?: AbortSignal,
 	) => Promise<EngineTextToSpeechResult>
 	processTextToImageTask?: (
 		args: EngineTextToImageArgs<TModelConfig, TModelMeta>,
-		instance: TInstance,
+		instance: TModelInstance,
 		signal?: AbortSignal,
 	) => Promise<EngineTextToImageResult>
 	processImageToImageTask?: (
 		args: EngineImageToImageArgs<TModelConfig, TModelMeta>,
-		instance: TInstance,
+		instance: TModelInstance,
 		signal?: AbortSignal,
 	) => Promise<EngineImageToImageResult>
+	processObjectRecognitionTask?: (
+		args: EngineObjectRecognitionArgs<TModelConfig, TModelMeta>,
+		instance: TModelInstance,
+		signal?: AbortSignal,
+	) => Promise<EngineObjectRecognitionResult>
 }
 
 export interface EngineEmbeddingResult {
@@ -307,4 +311,19 @@ export interface EngineSpeechToTextResult {
 
 export interface EngineTextToSpeechResult {
 	audio: Audio
+}
+
+export interface ObjectRecognitionResult {
+	label: string
+	score: number
+	box: {
+		x: number
+		y: number
+		width: number
+		height: number
+	}
+}
+
+export interface EngineObjectRecognitionResult {
+	objects: ObjectRecognitionResult[]
 }

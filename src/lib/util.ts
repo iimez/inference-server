@@ -19,20 +19,6 @@ export function touchFileSync(filePath: string) {
 	fs.closeSync(fs.openSync(filePath, 'w'))
 }
 
-function isSubpath(parent: string, child: string): boolean {
-	// Normalize paths to resolve .. and . segments
-	const normalizedParent = path.normalize(parent)
-	const normalizedChild = path.normalize(child)
-
-	// Get relative path from parent to child
-	const relativePath = path.relative(normalizedParent, normalizedChild)
-
-	// Check if relative path:
-	// 1. Doesn't start with .. (which would mean going up directories)
-	// 2. Isn't an absolute path (which would start with / or C:\ etc)
-	return !relativePath.startsWith('..') && !path.isAbsolute(relativePath)
-}
-
 export function mergeAbortSignals(signals: Array<AbortSignal | undefined>): AbortSignal {
 	const controller = new AbortController()
 	const onAbort = () => {

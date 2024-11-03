@@ -1,6 +1,6 @@
 {
 	"name": "inference-server",
-	"version": "1.0.0-beta.19",
+	"version": "1.0.0-beta.20",
 	"description": "Libraries and server to build AI applications. Adapters to various native bindings allowing local inference. Integrate it with your application, or use as a microservice.",
 	"main": "dist/index.js",
 	"source": "src/index.ts",
@@ -8,7 +8,7 @@
 	"type": "module",
 	"license": "MIT",
 	"bin": {
-		"lllms": "./dist/cli.js"
+		"infs": "./dist/cli.js"
 	},
 	"repository": "github:iimez/inference-server",
 	"bugs": {
@@ -97,7 +97,7 @@
 		"@lmagder/node-stable-diffusion-cpp": "^0.1.5",
 		"@types/cors": "^2.8.17",
 		"@types/express": "^5.0.0",
-		"@types/node": "^22.8.6",
+		"@types/node": "^22.8.7",
 		"@types/proper-lockfile": "^4.1.4",
 		"@types/supertest": "^6.0.2",
 		"cross-env": "^7.0.3",

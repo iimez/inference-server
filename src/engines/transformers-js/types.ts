@@ -42,23 +42,3 @@ export type TransformersJsDataType =
 export interface TransformersJsProcessorClass {
 	from_pretrained: (typeof AutoProcessor)['from_pretrained']
 }
-
-export interface TextToSpeechModel {
-	generate_speech: SpeechT5ForTextToSpeech['generate_speech']
-}
-
-export interface SpeechToTextModel {
-	generate: WhisperForConditionalGeneration['generate']
-}
-
-export interface TransformersJsModelComponents {
-	model?: PreTrainedModel | TextToSpeechModel | SpeechToTextModel
-	processor?: Processor
-	tokenizer?: PreTrainedTokenizer
-}
-
-export interface SpeechModelInstance extends TransformersJsModelComponents {
-	vocoder?: TransformersJsModelComponents
-	speakerEmbeddings?: Record<string, Float32Array>
-}
-

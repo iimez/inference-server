@@ -38,10 +38,17 @@ async function validateTokenizer(
 	modelPath: string,
 ): Promise<string | undefined> {
 	const tokenizerClass = modelOpts.tokenizerClass ?? AutoTokenizer
+	
 	try {
-		await tokenizerClass.from_pretrained(modelPath, {
-			local_files_only: true,
-		})
+		if (config.url) {
+			const { branch } = parseHuggingfaceModelIdAndBranch(config.url)
+			const hasTokenizer = await remoteFileExists(`${config.url}/blob/${branch}/tokenizer.json`)
+			if (hasTokenizer) {
+				await tokenizerClass.from_pretrained(modelPath, {
+					local_files_only: true,
+				})
+			}
+		}
 	} catch (error) {
 		return `Failed to load tokenizer (${error})`
 	}
@@ -136,7 +143,7 @@ async function validateModelComponents(
 }
 
 async function validateSpeechModel(
-	modelOpts: TransformersJsSpeechModel,
+	modelOpts: TransformersJsModel & TransformersJsSpeechModel,
 	config: TransformersJsModelConfig,
 	modelPath: string,
 ) {
@@ -167,6 +174,7 @@ interface ComponentValidationErrors {
 }
 
 interface ModelValidationErrors {
+	primaryModel?: ComponentValidationErrors
 	textModel?: ComponentValidationErrors
 	visionModel?: ComponentValidationErrors
 	speechModel?: ComponentValidationErrors
@@ -193,9 +201,10 @@ export async function validateModelFiles(
 	}
 
 	const modelValidationPromises: any = {}
-	const noModelConfigured = !config.textModel && !config.visionModel && !config.speechModel
-	if (config.textModel || noModelConfigured) {
-		modelValidationPromises.textModel = validateModelComponents(config.textModel || {}, config, modelPath)
+	// const noModelConfigured = !config.textModel && !config.visionModel && !config.speechModel
+	modelValidationPromises.primaryModel = validateModelComponents(config, config, modelPath)
+	if (config.textModel) {
+		modelValidationPromises.textModel = validateModelComponents(config.textModel, config, modelPath)
 	}
 	if (config.visionModel) {
 		modelValidationPromises.visionModel = validateModelComponents(config.visionModel, config, modelPath)
@@ -206,6 +215,10 @@ export async function validateModelFiles(
 
 	await Promise.all(Object.values(modelValidationPromises))
 	const validationErrors: ModelValidationErrors = {}
+	const primaryModelErrors = await modelValidationPromises.primaryModel
+	if (primaryModelErrors && Object.keys(primaryModelErrors).length) {
+		validationErrors.primaryModel = primaryModelErrors
+	}
 	const textModelErrors = await modelValidationPromises.textModel
 	if (textModelErrors && Object.keys(textModelErrors).length) {
 		validationErrors.textModel = textModelErrors
@@ -218,7 +231,6 @@ export async function validateModelFiles(
 	if (speechModelErrors && Object.keys(speechModelErrors).length) {
 		validationErrors.speechModel = speechModelErrors
 	}
-
 	const vocoderModelErrors = await modelValidationPromises.vocoderModel
 	if (vocoderModelErrors && Object.keys(vocoderModelErrors).length) {
 		validationErrors.vocoderModel = vocoderModelErrors
