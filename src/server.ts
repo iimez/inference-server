@@ -5,7 +5,7 @@ import { ModelInstance } from '#package/instance.js'
 import { ModelStore, StoredModel } from '#package/store.js'
 import {
 	ModelOptions,
-	IncomingRequest,
+	InferenceRequest,
 	CompletionProcessingOptions,
 	ChatCompletionRequest,
 	EmbeddingRequest,
@@ -176,7 +176,7 @@ export class ModelServer {
 		this.log(LogLevels.debug, 'Model server stopped')
 	}
 
-	async requestInstance(request: IncomingRequest, signal?: AbortSignal) {
+	async requestInstance(request: InferenceRequest, signal?: AbortSignal) {
 		return this.pool.requestInstance(request, signal)
 	}
 
