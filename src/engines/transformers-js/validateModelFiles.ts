@@ -10,14 +10,15 @@ import {
 import { TransformersJsModel, TransformersJsSpeechModel } from '#package/types/index.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
 import { TransformersJsModelConfig } from './engine.js'
-import { parseHuggingfaceModelIdAndBranch, remoteFileExists } from './util.js'
+import { parseHuggingfaceModelIdAndBranch, remoteFileExists, normalizeTransformersJsClass } from './util.js'
+import { TransformersJsModelClass, TransformersJsProcessorClass, TransformersJsTokenizerClass } from '#package/engines/transformers-js/types.js'
 
 async function validateModel(
 	modelOpts: TransformersJsModel,
 	config: TransformersJsModelConfig,
 	modelPath: string,
 ): Promise<string | undefined> {
-	const modelClass = modelOpts.modelClass ?? AutoModel
+	const modelClass = normalizeTransformersJsClass<TransformersJsModelClass>(modelOpts.modelClass, AutoModel)
 	const device = config.device?.gpu ? 'gpu' : 'cpu'
 	try {
 		const model = await modelClass.from_pretrained(modelPath, {
@@ -37,7 +38,7 @@ async function validateTokenizer(
 	config: TransformersJsModelConfig,
 	modelPath: string,
 ): Promise<string | undefined> {
-	const tokenizerClass = modelOpts.tokenizerClass ?? AutoTokenizer
+	const tokenizerClass = normalizeTransformersJsClass<TransformersJsTokenizerClass>(modelOpts.tokenizerClass, AutoTokenizer)
 	
 	try {
 		if (config.url) {
@@ -60,7 +61,7 @@ async function validateProcessor(
 	config: TransformersJsModelConfig,
 	modelPath: string,
 ): Promise<string | undefined> {
-	const processorClass = modelOpts.processorClass ?? AutoProcessor
+	const processorClass = normalizeTransformersJsClass<TransformersJsProcessorClass>(modelOpts.processorClass, AutoProcessor)
 	try {
 		if (modelOpts.processor) {
 			const processorPath = resolveModelFileLocation({
@@ -100,7 +101,7 @@ async function validateVocoder(
 	config: TransformersJsModelConfig,
 	modelPath: string,
 ): Promise<string | undefined> {
-	const vocoderClass = modelOpts.vocoderClass ?? AutoModel
+	const vocoderClass = normalizeTransformersJsClass<TransformersJsModelClass>(modelOpts.vocoderClass, AutoModel)
 	if (modelOpts.vocoder) {
 		const vocoderPath = resolveModelFileLocation({
 			url: modelOpts.vocoder.url,

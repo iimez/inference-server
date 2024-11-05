@@ -64,20 +64,18 @@ suite('basic', () => {
 				url: 'https://huggingface.co/jinaai/jina-clip-v1',
 				engine: 'transformers-js',
 				task: 'embedding',
-				prepare: 'blocking',
-				minInstances: 1,
-				maxInstances: 1,
-				device: {
-					gpu: false,
-				},
-				textModel: {
-					modelClass: CLIPTextModelWithProjection,
-				},
+				modelClass: CLIPTextModelWithProjection,
 				visionModel: {
 					processor: {
 						url: 'https://huggingface.co/Xenova/clip-vit-base-patch32',
 					},
 					modelClass: CLIPVisionModelWithProjection,
+				},
+				prepare: 'blocking',
+				minInstances: 1,
+				maxInstances: 1,
+				device: {
+					gpu: false,
 				},
 			},
 		},

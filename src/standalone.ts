@@ -293,18 +293,40 @@ const serverOptions: ModelHTTPServerOptions = {
 		// 	task: 'text-completion',
 		// 	prepare: 'blocking',
 		// },
-		speecht5: {
-			url: 'https://huggingface.co/Xenova/speecht5_tts',
+		// speecht5: {
+		// 	url: 'https://huggingface.co/Xenova/speecht5_tts',
+		// 	engine: 'transformers-js',
+		// 	task: 'text-to-speech',
+		// 	prepare: 'async',
+		// 	minInstances: 1,
+		// 	speechModel: {
+		// 		speakerEmbeddings: {
+		// 			voice: {
+		// 				url: 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/speaker_embeddings.bin',
+		// 			},
+		// 		},
+		// 	},
+		// },
+		// 'owlv2-base': {
+		// 	url: 'https://huggingface.co/Xenova/owlv2-base-patch16-finetuned',
+		// 	engine: 'transformers-js',
+		// 	task: 'object-detection',
+		// 	prepare: 'async',
+		// 	dtype: 'fp16',
+		// },
+		'whisper-base': {
+			url: 'https://huggingface.co/onnx-community/whisper-base',
 			engine: 'transformers-js',
-			task: 'text-to-speech',
+			task: 'speech-to-text',
 			prepare: 'async',
 			minInstances: 1,
-			speechModel: {
-				speakerEmbeddings: {
-					voice: {
-						url: 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/speaker_embeddings.bin',
-					},
-				},
+			modelClass: WhisperForConditionalGeneration,
+			dtype: {
+				encoder_model: 'fp16',
+				decoder_model_merged: 'q4',
+			},
+			device: {
+				gpu: false,
 			},
 		},
 	},

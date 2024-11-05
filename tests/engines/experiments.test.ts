@@ -1,12 +1,7 @@
-import { suite, it, test, beforeAll, afterAll, expect } from 'vitest'
-import {
-	Florence2ForConditionalGeneration,
-	WhisperForConditionalGeneration,
-} from '@huggingface/transformers'
+import { suite, it, beforeAll, afterAll, expect } from 'vitest'
+import { Florence2ForConditionalGeneration, WhisperForConditionalGeneration } from '@huggingface/transformers'
 import { ModelServer } from '#package/server.js'
-import {
-	ChatMessage,
-} from '#package/types/index.js'
+import { ChatMessage, ToolDefinition } from '#package/types/index.js'
 import { ChatWithVisionEngine } from '#package/experiments/ChatWithVision.js'
 import { VoiceFunctionCallEngine } from '#package/experiments/VoiceFunctionCall.js'
 import { createChatCompletion } from '../util'
@@ -62,7 +57,7 @@ suite('chat with vision', () => {
 
 	it('can see', async () => {
 		const image = await loadImageFromUrl(
-			'https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/car.jpg?download=true'
+			'https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/car.jpg?download=true',
 		)
 		const messages: ChatMessage[] = [
 			{
@@ -91,7 +86,39 @@ suite('chat with vision', () => {
 })
 
 suite('voice functions', () => {
-	let searchSources: string
+	type SearchParams = { query: string, sources: string }
+	const searchCalls: SearchParams[] = []
+	const searchTool: ToolDefinition<SearchParams> = {
+		description: 'Search',
+		parameters: {
+			type: 'object',
+			properties: {
+				query: {
+					type: 'string',
+				},
+				sources: {
+					type: 'string',
+					enum: ['web', 'all databases', 'local files'],
+				},
+				test: {
+					type: 'number',
+					multipleOf: 2,
+				}
+			},
+			required: ['query', 'sources'],
+		},
+		handler: async (params) => {
+			// console.debug('called', { params })
+			searchCalls.push(params)
+			return (
+				`Searching for: ${params.query}` +
+				'1. A dessert on Darmok\n' +
+				'2. A continent on Etobicoke\n' +
+				'3. A city on Risa'
+			)
+		},
+	}
+
 	const modelServer = new ModelServer({
 		// log: 'debug',
 		engines: {
@@ -99,32 +126,7 @@ suite('voice functions', () => {
 				speechToTextModel: 'whisper-base',
 				chatModel: 'functionary',
 				tools: {
-					search: {
-						description: 'Search',
-						parameters: {
-							type: 'object',
-							properties: {
-								query: {
-									type: 'string',
-								},
-								sources: {
-									type: 'string',
-									enum: ['web', 'all databases', 'local files'],
-								},
-							},
-							required: ['query', 'sources'],
-						},
-						handler: async (params) => {
-							searchSources = params.sources
-							// console.debug('called', { params })
-							return (
-								`Searching for: ${params.query}` +
-								'1. A dessert on Darmok\n' +
-								'2. A continent on Etobicoke\n' +
-								'3. A city on Risa'
-							)
-						},
-					},
+					search: searchTool,
 				},
 			}),
 		},
@@ -152,8 +154,7 @@ suite('voice functions', () => {
 				task: 'text-completion',
 				engine: 'node-llama-cpp',
 				url: 'https://huggingface.co/meetkai/functionary-small-v3.2-GGUF/blob/main/functionary-small-v3.2.Q4_0.gguf',
-				sha256:
-					'c0afdbbffa498a8490dea3401e34034ac0f2c6e337646513a7dbc04fcef1c3a4',
+				sha256: 'c0afdbbffa498a8490dea3401e34034ac0f2c6e337646513a7dbc04fcef1c3a4',
 				// device: {
 				// 	gpu: 'vulkan',
 				// }
@@ -168,7 +169,7 @@ suite('voice functions', () => {
 		await modelServer.stop()
 	})
 	it('can hear', async () => {
-		const audio = await loadAudioFromFile('tests/fixtures/tenabra.mp3', {
+		const audio = await loadAudioFromFile('tests/fixtures/tenagra.mp3', {
 			sampleRate: 16000,
 		})
 		const result = await modelServer.processSpeechToTextTask({
@@ -176,6 +177,8 @@ suite('voice functions', () => {
 			audio,
 		})
 		expect(result.text).toContain('Risa')
-		expect(searchSources).toMatch('all databases')
+		expect(searchCalls).toHaveLength(1)
+		expect(searchCalls[0].sources).toMatch('all databases')
+		expect(searchCalls[0].query).toMatch(/tenagra/i)
 	}, 120000)
 })

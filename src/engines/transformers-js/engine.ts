@@ -1,4 +1,4 @@
-import path from 'node:path'
+import path, { normalize } from 'node:path'
 import fs from 'node:fs'
 import {
 	EngineContext,
@@ -37,13 +37,13 @@ import { LogLevels } from '#package/lib/logger.js'
 import { resampleAudioBuffer } from '#package/lib/loadAudio.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
 import { moveDirectoryContents } from '#package/lib/moveDirectoryContents.js'
-import { fetchBuffer, parseHuggingfaceModelIdAndBranch, remoteFileExists } from './util.js'
+import { fetchBuffer, normalizeTransformersJsClass, parseHuggingfaceModelIdAndBranch, remoteFileExists } from './util.js'
 import { validateModelFiles, ModelValidationResult } from './validateModelFiles.js'
 import { acquireModelFileLocks } from './acquireModelFileLocks.js'
 import { loadModelComponents, loadSpeechModelComponents } from './loadModelComponents.js'
+import { TransformersJsModelClass, TransformersJsProcessorClass, TransformersJsTokenizerClass } from '#package/engines/transformers-js/types.js'
 
 export interface TransformersJsModelComponents<TModel = PreTrainedModel> {
-	// model?: PreTrainedModel | TextToSpeechModel | SpeechToTextModel
 	model?: TModel
 	processor?: Processor
 	tokenizer?: PreTrainedTokenizer
@@ -144,7 +144,7 @@ export async function prepareModel(
 		{ modelId, branch }: { modelId: string; branch: string },
 		requiredComponents: string[] = ['model', 'tokenizer', 'processor', 'vocoder'],
 	) => {
-		const modelClass = modelOpts.modelClass ?? AutoModel
+		const modelClass = normalizeTransformersJsClass<TransformersJsModelClass>(modelOpts.modelClass, AutoModel)
 		const downloadPromises: Record<string, Promise<any> | undefined> = {}
 		const progressCallback = (progress: TransformersJsDownloadProgress) => {
 			if (onProgress && progress.status === 'progress') {
@@ -167,7 +167,10 @@ export async function prepareModel(
 		if (requiredComponents.includes('tokenizer')) {
 			const hasTokenizer = await remoteFileExists(`${config.url}/blob/${branch}/tokenizer.json`)
 			if (hasTokenizer) {
-				const tokenizerClass = modelOpts.tokenizerClass ?? AutoTokenizer
+				const tokenizerClass = normalizeTransformersJsClass<TransformersJsTokenizerClass>(
+					modelOpts.tokenizerClass,
+					AutoTokenizer
+				)
 				const tokenizerDownload = tokenizerClass.from_pretrained(modelId, {
 					revision: branch,
 					progress_callback: progressCallback,
@@ -177,9 +180,10 @@ export async function prepareModel(
 		}
 
 		if (requiredComponents.includes('processor')) {
+			const processorClass = normalizeTransformersJsClass<TransformersJsProcessorClass>(modelOpts.processorClass, AutoProcessor)
 			if (modelOpts.processor?.url) {
 				const { modelId, branch } = parseHuggingfaceModelIdAndBranch(modelOpts.processor.url)
-				const processorDownload = AutoProcessor.from_pretrained(modelId, {
+				const processorDownload = processorClass.from_pretrained(modelId, {
 					revision: branch,
 					progress_callback: progressCallback,
 				})
@@ -190,7 +194,7 @@ export async function prepareModel(
 					remoteFileExists(`${config.url}/blob/${branch}/preprocessor_config.json`),
 				])
 				if (hasProcessor || hasPreprocessor) {
-					const processorDownload = AutoProcessor.from_pretrained(modelId, {
+					const processorDownload = processorClass.from_pretrained(modelId, {
 						revision: branch,
 						progress_callback: progressCallback,
 					})

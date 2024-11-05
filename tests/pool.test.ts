@@ -8,8 +8,8 @@ suite('basic', () => {
 		models: {
 			test: {
 				task: 'text-completion',
-				url: 'https://huggingface.co/mradermacher/Meta-Llama-3.1-8B-Instruct-GGUF/blob/main/Meta-Llama-3.1-8B-Instruct.Q4_K_M.gguf',
-				sha256: '56e1a31ac6e5037174344ac2153c33d873f301f2a312ef2619775190aade51c7',
+				url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/blob/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
+				sha256: '6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff',
 				engine: 'node-llama-cpp',
 			},
 		},
@@ -88,9 +88,8 @@ suite('gpu', () => {
 				device: { gpu: true },
 			},
 			'node-llama-cpp': {
-				url: 'https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/blob/main/Phi-3.5-mini-instruct-Q4_K_M.gguf',
-				sha256:
-					'e4165e3a71af97f1b4820da61079826d8752a2088e313af0c7d346796c38eff5',
+				url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/blob/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
+				sha256: '6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff',
 				task: 'text-completion',
 				engine: 'node-llama-cpp',
 				device: { gpu: true },

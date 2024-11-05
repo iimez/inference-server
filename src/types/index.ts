@@ -153,9 +153,9 @@ export interface TransformersJsModel {
 		url?: string
 		file?: string
 	}
-	processorClass?: TransformersJsProcessorClass
-	tokenizerClass?: TransformersJsTokenizerClass
-	modelClass?: TransformersJsModelClass
+	processorClass?: TransformersJsProcessorClass | string
+	tokenizerClass?: TransformersJsTokenizerClass | string
+	modelClass?: TransformersJsModelClass | string
 	dtype?: Record<string, TransformersJsDataType> | TransformersJsDataType
 }
 

@@ -4,15 +4,14 @@ import express, { Express } from 'express'
 import { ModelServer, ModelServerOptions } from '#package/server.js'
 import { createExpressMiddleware } from '#package/http.js'
 
-const testModel = 'phi3-mini-4k'
+const testModel = 'llama-3.2-3b'
 
 const testConfig: ModelServerOptions = {
 	concurrency: 1,
 	models: {
 		[testModel]: {
-			url: 'https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/blob/main/Phi-3.5-mini-instruct-Q4_K_M.gguf',
-			sha256:
-				'e4165e3a71af97f1b4820da61079826d8752a2088e313af0c7d346796c38eff5',
+			url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/blob/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
+			sha256: '6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff',
 			task: 'text-completion',
 			device: { gpu: false },
 			engine: 'node-llama-cpp',

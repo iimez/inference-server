@@ -1,3 +1,8 @@
+import { TransformersJsModelClass } from "#package/engines/transformers-js/types"
+import * as TransformersJs from '@huggingface/transformers'
+
+// TransformersJs.CLIPFeatureExtractor
+
 export async function fetchBuffer(url: string): Promise<Buffer> {
 	const response = await fetch(url)
 	if (!response.ok) {
@@ -5,7 +10,6 @@ export async function fetchBuffer(url: string): Promise<Buffer> {
 	}
 	return Buffer.from(await response.arrayBuffer())
 }
-
 
 export async function remoteFileExists(url: string): Promise<boolean> {
 	try {
@@ -33,4 +37,19 @@ export function parseHuggingfaceModelIdAndBranch(url: string): HuggingfaceModelI
 		modelId: `${repoOrg}/${repoName}`,
 		branch,
 	}
+}
+
+export function normalizeTransformersJsClass<T>(classLike: T | string | undefined, fallback?: T): T {
+	if (typeof classLike === 'string') {
+		if (classLike in TransformersJs) {
+			return TransformersJs[classLike as keyof typeof TransformersJs] as T
+		}
+	}
+	if (typeof classLike === 'function') {
+		return classLike
+	}
+	if (fallback) {
+		return fallback
+	}
+	throw new Error(`Invalid TransformersJs class: ${classLike}`)
 }

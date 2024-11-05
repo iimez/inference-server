@@ -161,8 +161,8 @@ suite('basic', () => {
 		expect(tableStructureRes.objects).toBeTruthy()
 		const tableRows = tableStructureRes.objects.filter((x) => x.label === 'table row')
 		expect(tableRows.length).toEqual(8)
-		// const imageWithBoundingBoxed = await drawBoundingBoxes(paddedCrop, tableRows)
-		// await imageWithBoundingBoxed.toFile('tests/fixtures/table-detected-rows.png')
+		// const imageWithBoundingBoxes = await drawBoundingBoxes(paddedCrop, tableRows)
+		// await imageWithBoundingBoxes.toFile('tests/fixtures/table-detected-rows.png')
 	})
 
 	test('text to speech to text', async () => {

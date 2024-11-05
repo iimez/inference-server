@@ -6,6 +6,8 @@ import type {
 	AutoProcessor,
 	SpeechT5ForTextToSpeech,
 	WhisperForConditionalGeneration,
+	AutoTokenizer,
+	AutoModel,
 	// DataType, // this is the tensor.js DataType Type, not the one im looking for
 } from '@huggingface/transformers'
 
@@ -26,8 +28,8 @@ import type {
 // } from '@huggingface/transformers'
 // import type { DataType } from '@huggingface/transformers/src/utils/dtypes.js' // this is dtypes.js DataType Type, cant import
 
-export type TransformersJsModelClass = typeof PreTrainedModel
-export type TransformersJsTokenizerClass = typeof PreTrainedTokenizer
+export type TransformersJsModelClass = typeof PretrainedMixin | typeof PreTrainedModel | typeof AutoModel
+export type TransformersJsTokenizerClass = typeof PreTrainedTokenizer | typeof AutoTokenizer
 
 export type TransformersJsDataType =
 	| 'fp32'

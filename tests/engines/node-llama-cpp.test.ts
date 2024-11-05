@@ -26,8 +26,6 @@ import {
 import { createChatCompletion, createTextCompletion, parseInstanceId } from '../util.js'
 
 const testModel: ModelOptions = {
-	// url: 'https://huggingface.co/mradermacher/Meta-Llama-3.1-8B-Instruct-GGUF/blob/main/Meta-Llama-3.1-8B-Instruct.Q4_K_M.gguf',
-	// sha256: '56e1a31ac6e5037174344ac2153c33d873f301f2a312ef2619775190aade51c7',
 	url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/blob/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
 	sha256: '6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff',
 	engine: 'node-llama-cpp',
@@ -94,9 +92,8 @@ suite('function calling', async () => {
 				url: 'https://huggingface.co/meetkai/functionary-small-v3.2-GGUF/blob/main/functionary-small-v3.2.Q4_0.gguf',
 				sha256:
 					'c0afdbbffa498a8490dea3401e34034ac0f2c6e337646513a7dbc04fcef1c3a4',
-				// url: 'https://huggingface.co/mradermacher/Meta-Llama-3.1-8B-Instruct-GGUF/blob/main/Meta-Llama-3.1-8B-Instruct.Q4_K_M.gguf',
-				// sha256:
-				// 	'56e1a31ac6e5037174344ac2153c33d873f301f2a312ef2619775190aade51c7',
+				// url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/blob/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
+				// sha256: '6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff',
 				// tools: {
 				// 	definitions: {},
 				// 	includeParamsDocumentation: true,

@@ -8,15 +8,17 @@ import {
 	PreTrainedTokenizer,
 } from '@huggingface/transformers'
 import { TransformersJsModel, TransformersJsSpeechModel } from '#package/types/index.js'
-import { TransformersJsModelConfig, TransformersJsModelComponents, SpeechModelComponents } from './engine.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
+import { TransformersJsModelConfig, TransformersJsModelComponents, SpeechModelComponents } from './engine.js'
+import { TransformersJsModelClass, TransformersJsProcessorClass, TransformersJsTokenizerClass } from './types.js'
+import { normalizeTransformersJsClass } from './util.js'
 
 export async function loadModelComponents<TModel extends TransformersJsModelComponents = TransformersJsModelComponents>(
 	modelOpts: TransformersJsModel | TransformersJsModel & TransformersJsSpeechModel,
 	config: TransformersJsModelConfig,
 ): Promise<TModel> {
 	const device = config.device?.gpu ? 'gpu' : 'cpu'
-	const modelClass = modelOpts.modelClass ?? AutoModel
+	const modelClass = normalizeTransformersJsClass<TransformersJsModelClass>(modelOpts.modelClass, AutoModel)
 	let modelPath = config.location
 	if (!modelPath.endsWith('/')) {
 		modelPath += '/'
@@ -31,7 +33,7 @@ export async function loadModelComponents<TModel extends TransformersJsModelComp
 
 	const hasTokenizer = fs.existsSync(modelPath + 'tokenizer.json')
 	if (hasTokenizer) {
-		const tokenizerClass = modelOpts.tokenizerClass ?? AutoTokenizer
+		const tokenizerClass = normalizeTransformersJsClass<TransformersJsTokenizerClass>(modelOpts.tokenizerClass, AutoTokenizer)
 		const tokenizerPromise = tokenizerClass.from_pretrained(modelPath, {
 			local_files_only: true,
 		})
@@ -43,7 +45,7 @@ export async function loadModelComponents<TModel extends TransformersJsModelComp
 	const hasPreprocessor = fs.existsSync(modelPath + 'preprocessor_config.json')
 	const hasProcessor = fs.existsSync(modelPath + 'processor_config.json')
 	if (hasProcessor || hasPreprocessor || modelOpts.processor) {
-		const processorClass = modelOpts.processorClass ?? AutoProcessor
+		const processorClass = normalizeTransformersJsClass<TransformersJsProcessorClass>(modelOpts.processorClass, AutoProcessor)
 		if (modelOpts.processor) {
 			const processorPath = resolveModelFileLocation({
 				url: modelOpts.processor.url,
@@ -66,7 +68,7 @@ export async function loadModelComponents<TModel extends TransformersJsModelComp
 	
 
 	if ('vocoder' in modelOpts && modelOpts.vocoder) {
-		const vocoderClass = modelOpts.vocoderClass ?? AutoModel
+		const vocoderClass = normalizeTransformersJsClass<TransformersJsModelClass>(modelOpts.vocoderClass, AutoModel)
 		const vocoderPath = resolveModelFileLocation({
 			url: modelOpts.vocoder.url,
 			filePath: modelOpts.vocoder.file,

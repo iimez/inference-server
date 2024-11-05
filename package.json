@@ -8,7 +8,8 @@
 	"type": "module",
 	"license": "MIT",
 	"bin": {
-		"infs": "./dist/cli.js"
+		"infs": "./dist/cli/index.js",
+		"inference-server": "./dist/cli/index.js"
 	},
 	"repository": "github:iimez/inference-server",
 	"bugs": {
@@ -84,22 +85,26 @@
 		"cors": "^2.8.5",
 		"express": "^4.21.1",
 		"ipull": "^3.9.1",
+		"micromatch": "^4.0.8",
 		"nanoid": "^5.0.8",
 		"p-queue": "^8.0.1",
 		"pretty-bytes": "^6.1.1",
 		"pretty-ms": "^9.1.0",
 		"proper-lockfile": "^4.1.2",
 		"sharp": "^0.33.5",
-		"wavefile": "^11.0.0"
+		"wavefile": "^11.0.0",
+		"yargs": "^17.7.2"
 	},
 	"devDependencies": {
 		"@huggingface/transformers": "^3.0.1",
 		"@lmagder/node-stable-diffusion-cpp": "^0.1.5",
 		"@types/cors": "^2.8.17",
 		"@types/express": "^5.0.0",
+		"@types/micromatch": "^4.0.9",
 		"@types/node": "^22.8.7",
 		"@types/proper-lockfile": "^4.1.4",
 		"@types/supertest": "^6.0.2",
+		"@types/yargs": "^17.0.33",
 		"cross-env": "^7.0.3",
 		"gpt4all": "^4.0.0",
 		"node-llama-cpp": "^3.2.0",
