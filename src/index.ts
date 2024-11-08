@@ -7,7 +7,6 @@ export * from './server.js'
 export * from './http.js'
 
 // export libs that might be useful downstream
-export * from './lib/createPaddedCrop.js'
-export * from './lib/drawBoundingBoxes.js'
 export * from './lib/loadImage.js'
+export * from './lib/loadAudio.js'
 export * from './lib/math.js'

@@ -71,7 +71,7 @@ export interface ModelConfig extends ModelConfigBase {
 }
 
 export interface Image {
-	handle: Sharp
+	data: Buffer
 	width: number
 	height: number
 	channels: 1 | 2 | 3 | 4
@@ -159,15 +159,17 @@ export interface TransformersJsModel {
 	dtype?: Record<string, TransformersJsDataType> | TransformersJsDataType
 }
 
+export type SpeakerEmbeddings = Record<
+	string,
+	| {
+			url?: string
+			file?: string
+	  }
+	| Float32Array
+>
+
 export interface TransformersJsSpeechModel {
-	speakerEmbeddings?: Record<
-		string,
-		| {
-				url?: string
-				file?: string
-		  }
-		| Float32Array
-	>
+	speakerEmbeddings?: SpeakerEmbeddings
 	vocoderClass?: TransformersJsModelClass
 	vocoder?: {
 		url?: string

@@ -264,13 +264,14 @@ export async function processTextToImageTask(
 	const images: Image[] = []
 	for (const [idx, img] of results.entries()) {
 		images.push({
-			handle: sharp(img.data, {
-				raw: {
-					width: img.width,
-					height: img.height,
-					channels: img.channel,
-				},
-			}),
+			// handle: sharp(img.data, {
+			// 	raw: {
+			// 		width: img.width,
+			// 		height: img.height,
+			// 		channels: img.channel,
+			// 	},
+			// }),
+			data: img.data,
 			width: img.width,
 			height: img.height,
 			channels: img.channel,
@@ -297,7 +298,8 @@ export async function processImageToImageTask(
 		channel: request.image.channels as 3 | 4,
 	})
 	const initImage = {
-		data: await request.image.handle.raw().toBuffer(),
+		// data: await request.image.handle.raw().toBuffer(),
+		data: request.image.data,
 		width: request.image.width,
 		height: request.image.height,
 		channel: request.image.channels as 3 | 4,
@@ -340,13 +342,14 @@ export async function processImageToImageTask(
 		})
 
 		images.push({
-			handle: sharp(img.data, {
-				raw: {
-					width: img.width,
-					height: img.height,
-					channels: img.channel,
-				},
-			}),
+			// handle: sharp(img.data, {
+			// 	raw: {
+			// 		width: img.width,
+			// 		height: img.height,
+			// 		channels: img.channel,
+			// 	},
+			// }),
+			data: img.data,
 			width: img.width,
 			height: img.height,
 			channels: img.channel,

@@ -1,7 +1,9 @@
 import fs from 'node:fs'
-import { Audio } from '#package/types/index.js'
+import path from 'node:path'
+import * as WaveFile from 'wavefile'
 import decode from 'audio-decode'
 import libSampleRate from '@alexanderolsen/libsamplerate-js'
+import { Audio } from '#package/types/index.js'
 
 interface ResampleOptions {
 	inputSampleRate?: number
@@ -68,5 +70,16 @@ export async function loadAudioFromUrl(
 		sampleRate: opts.sampleRate ?? 16000,
 		channels: 1,
 		samples: audio,
+	}
+}
+
+export async function saveAudioToFile(audio: Audio, destPath: string) {
+	const format = path.extname(destPath).toLowerCase().replace('.', '')
+	if (format === 'wav') {
+		const wav = new WaveFile.WaveFile()
+		wav.fromScratch(audio.channels, audio.sampleRate, '32f', audio.samples)
+		fs.writeFileSync(destPath, wav.toBuffer())
+	} else {
+		throw new Error(`Unsupported audio format: ${format}`)
 	}
 }

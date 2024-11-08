@@ -23,7 +23,7 @@ import {
 	runTimeoutTest,
 	runCancellationTest,
 } from './lib/index.js'
-import { createChatCompletion, createTextCompletion, parseInstanceId } from '../util.js'
+import { createChatCompletion, createTextCompletion, parseInstanceId } from '../util/completions.js'
 
 const testModel: ModelOptions = {
 	url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/blob/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',

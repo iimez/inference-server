@@ -17,6 +17,7 @@ import {
 	TransformersJsSpeechModel,
 	EngineObjectRecognitionArgs,
 	ObjectRecognitionResult,
+	SpeakerEmbeddings,
 } from '#package/types/index.js'
 import {
 	env,
@@ -37,11 +38,20 @@ import { LogLevels } from '#package/lib/logger.js'
 import { resampleAudioBuffer } from '#package/lib/loadAudio.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
 import { moveDirectoryContents } from '#package/lib/moveDirectoryContents.js'
-import { fetchBuffer, normalizeTransformersJsClass, parseHuggingfaceModelIdAndBranch, remoteFileExists } from './util.js'
+import {
+	fetchBuffer,
+	normalizeTransformersJsClass,
+	parseHuggingfaceModelIdAndBranch,
+	remoteFileExists,
+} from './util.js'
 import { validateModelFiles, ModelValidationResult } from './validateModelFiles.js'
 import { acquireModelFileLocks } from './acquireModelFileLocks.js'
 import { loadModelComponents, loadSpeechModelComponents } from './loadModelComponents.js'
-import { TransformersJsModelClass, TransformersJsProcessorClass, TransformersJsTokenizerClass } from '#package/engines/transformers-js/types.js'
+import {
+	TransformersJsModelClass,
+	TransformersJsProcessorClass,
+	TransformersJsTokenizerClass,
+} from '#package/engines/transformers-js/types.js'
 
 export interface TransformersJsModelComponents<TModel = PreTrainedModel> {
 	model?: TModel
@@ -144,6 +154,7 @@ export async function prepareModel(
 		{ modelId, branch }: { modelId: string; branch: string },
 		requiredComponents: string[] = ['model', 'tokenizer', 'processor', 'vocoder'],
 	) => {
+		console.debug({ modelOpts, modelId, branch, requiredComponents })
 		const modelClass = normalizeTransformersJsClass<TransformersJsModelClass>(modelOpts.modelClass, AutoModel)
 		const downloadPromises: Record<string, Promise<any> | undefined> = {}
 		const progressCallback = (progress: TransformersJsDownloadProgress) => {
@@ -169,7 +180,7 @@ export async function prepareModel(
 			if (hasTokenizer) {
 				const tokenizerClass = normalizeTransformersJsClass<TransformersJsTokenizerClass>(
 					modelOpts.tokenizerClass,
-					AutoTokenizer
+					AutoTokenizer,
 				)
 				const tokenizerDownload = tokenizerClass.from_pretrained(modelId, {
 					revision: branch,
@@ -180,7 +191,10 @@ export async function prepareModel(
 		}
 
 		if (requiredComponents.includes('processor')) {
-			const processorClass = normalizeTransformersJsClass<TransformersJsProcessorClass>(modelOpts.processorClass, AutoProcessor)
+			const processorClass = normalizeTransformersJsClass<TransformersJsProcessorClass>(
+				modelOpts.processorClass,
+				AutoProcessor,
+			)
 			if (modelOpts.processor?.url) {
 				const { modelId, branch } = parseHuggingfaceModelIdAndBranch(modelOpts.processor.url)
 				const processorDownload = processorClass.from_pretrained(modelId, {
@@ -224,7 +238,33 @@ export async function prepareModel(
 			modelComponents.processor = (await downloadPromises.processor) as Processor
 		}
 		disposeModelComponents(modelComponents)
-		return modelComponents
+		// return modelComponents
+	}
+	
+	const downloadSpeakerEmbeddings = async (speakerEmbeddings: SpeakerEmbeddings) => {
+		const speakerEmbeddingsPromises = []
+		for (const speakerEmbedding of Object.values(speakerEmbeddings)) {
+			if (speakerEmbedding instanceof Float32Array) {
+				// nothing to download if we have the embeddings already
+				continue
+			}
+			if (!speakerEmbedding.url) {
+				continue
+			}
+			const speakerEmbeddingsPath = resolveModelFileLocation({
+				url: speakerEmbedding.url,
+				filePath: speakerEmbedding.file,
+				modelsCachePath: config.modelsCachePath,
+			})
+			const url = speakerEmbedding.url
+			speakerEmbeddingsPromises.push(
+				(async () => {
+					const buffer = await fetchBuffer(url)
+					await fs.promises.writeFile(speakerEmbeddingsPath, buffer)
+				})(),
+			)
+		}
+		return Promise.all(speakerEmbeddingsPromises)
 	}
 
 	const downloadModel = async (validationResult: ModelValidationResult) => {
@@ -242,11 +282,45 @@ export async function prepareModel(
 		const directoriesToCopy: Record<string, string> = {}
 		const modelCacheDir = path.join(env.cacheDir, modelId)
 		directoriesToCopy[modelCacheDir] = config.location
-		// const noModelConfigured = !config.textModel && !config.visionModel && !config.speechModel
+		const prepareDownloadedVocoder = (vocoderOpts: { url?: string, file?: string }) => {
+			if (!vocoderOpts.url) {
+				return
+			}
+			const vocoderPath = resolveModelFileLocation({
+				url: vocoderOpts.url,
+				filePath: vocoderOpts.file,
+				modelsCachePath: config.modelsCachePath,
+			})
+			const { modelId } = parseHuggingfaceModelIdAndBranch(vocoderOpts.url)
+			const vocoderCacheDir = path.join(env.cacheDir, modelId)
+			directoriesToCopy[vocoderCacheDir] = vocoderPath
+		}
+		const prepareDownloadedProcessor = (processorOpts: { url?: string, file?: string }) => {
+			if (!processorOpts.url) {
+				return
+			}
+			const processorPath = resolveModelFileLocation({
+				url: processorOpts.url,
+				filePath: processorOpts.file,
+				modelsCachePath: config.modelsCachePath,
+			})
+			const { modelId } = parseHuggingfaceModelIdAndBranch(processorOpts.url)
+			const processorCacheDir = path.join(env.cacheDir, modelId)
+			directoriesToCopy[processorCacheDir] = processorPath
+		}
 		const requiredComponents = validationResult.errors?.primaryModel
 			? Object.keys(validationResult.errors.primaryModel)
 			: undefined
 		modelDownloadPromises.push(downloadModelFiles(config, { modelId, branch }, requiredComponents))
+		if (config.processor?.url) {
+			prepareDownloadedProcessor(config.processor)
+		}
+		if (config.vocoder?.url) {
+			prepareDownloadedVocoder(config.vocoder)
+		}
+		if (config?.speakerEmbeddings) {
+			modelDownloadPromises.push(downloadSpeakerEmbeddings(config.speakerEmbeddings))
+		}
 		if (config.textModel) {
 			const requiredComponents = validationResult.errors?.textModel
 				? Object.keys(validationResult.errors.textModel)
@@ -258,15 +332,8 @@ export async function prepareModel(
 				? Object.keys(validationResult.errors.visionModel)
 				: undefined
 			modelDownloadPromises.push(downloadModelFiles(config.visionModel, { modelId, branch }, requiredComponents))
-			if (config.visionModel.processor?.url) {
-				const processorPath = resolveModelFileLocation({
-					url: config.visionModel.processor.url,
-					filePath: config.visionModel.processor.file,
-					modelsCachePath: config.modelsCachePath,
-				})
-				const { modelId } = parseHuggingfaceModelIdAndBranch(config.visionModel.processor.url)
-				const processorCacheDir = path.join(env.cacheDir, modelId)
-				directoriesToCopy[processorCacheDir] = processorPath
+			if (config.processor?.url) {
+				prepareDownloadedProcessor(config.processor)
 			}
 		}
 		if (config.speechModel) {
@@ -275,39 +342,10 @@ export async function prepareModel(
 				: undefined
 			modelDownloadPromises.push(downloadModelFiles(config.speechModel, { modelId, branch }, requiredComponents))
 			if (config.speechModel.vocoder?.url) {
-				const vocoderPath = resolveModelFileLocation({
-					url: config.speechModel.vocoder.url,
-					filePath: config.speechModel.vocoder.file,
-					modelsCachePath: config.modelsCachePath,
-				})
-				const { modelId } = parseHuggingfaceModelIdAndBranch(config.speechModel.vocoder.url)
-				const vocoderCacheDir = path.join(env.cacheDir, modelId)
-				directoriesToCopy[vocoderCacheDir] = vocoderPath
+				prepareDownloadedVocoder(config.speechModel.vocoder)
 			}
 			if (config.speechModel?.speakerEmbeddings) {
-				const speakerEmbeddingsPromises = []
-				for (const speakerEmbedding of Object.values(config.speechModel.speakerEmbeddings)) {
-					if (speakerEmbedding instanceof Float32Array) {
-						// nothing to download if we have the embeddings already
-						continue
-					}
-					if (!speakerEmbedding.url) {
-						continue
-					}
-					const speakerEmbeddingsPath = resolveModelFileLocation({
-						url: speakerEmbedding.url,
-						filePath: speakerEmbedding.file,
-						modelsCachePath: config.modelsCachePath,
-					})
-					const url = speakerEmbedding.url
-					speakerEmbeddingsPromises.push(
-						(async () => {
-							const buffer = await fetchBuffer(url)
-							await fs.promises.writeFile(speakerEmbeddingsPath, buffer)
-						})(),
-					)
-				}
-				modelDownloadPromises.push(Promise.all(speakerEmbeddingsPromises))
+				modelDownloadPromises.push(downloadSpeakerEmbeddings(config.speechModel.speakerEmbeddings))
 			}
 		}
 
@@ -409,7 +447,7 @@ export async function createInstance({ config, log }: EngineContext<Transformers
 		primary: models[0] as TransformersJsModelComponents,
 		text: models[1] as TransformersJsModelComponents,
 		vision: models[2] as TransformersJsModelComponents,
-		speech: models[3] as (SpeechModelComponents & TransformersJsModelComponents),
+		speech: models[3] as SpeechModelComponents & TransformersJsModelComponents,
 	}
 
 	// TODO preload whisper / any speech to text?
@@ -541,9 +579,16 @@ export async function processEmbeddingTask(
 			if (!modelComponents?.processor || !modelComponents?.model) {
 				throw new Error('Vision model is not loaded.')
 			}
-			const { data, info } = await embeddingInput.content.handle.raw().toBuffer({ resolveWithObject: true })
-			const image = new RawImage(new Uint8ClampedArray(data), info.width, info.height, info.channels)
-			modelInputs = await modelComponents.processor!(image)
+			// const
+			// const { data, info } = await sharp(embeddingInput.content.data).raw().toBuffer({ resolveWithObject: true })
+			const image = embeddingInput.content
+			const rawImage = new RawImage(
+				new Uint8ClampedArray(image.data),
+				image.width,
+				image.height,
+				image.channels as 1 | 2 | 3 | 4,
+			)
+			modelInputs = await modelComponents.processor!(rawImage)
 			// @ts-ignore TODO check _call
 			const modelOutputs = await instance.vision.model(modelInputs)
 			result = modelOutputs.last_hidden_state ?? modelOutputs.logits ?? modelOutputs.image_embeds
@@ -573,8 +618,13 @@ export async function processImageToTextTask(
 	if (!request.image) {
 		throw new Error('No image provided')
 	}
-	const { data, info } = await request.image.handle.raw().toBuffer({ resolveWithObject: true })
-	const image = new RawImage(new Uint8ClampedArray(data), info.width, info.height, info.channels)
+	const image = request.image
+	const rawImage = new RawImage(
+		new Uint8ClampedArray(image.data),
+		image.width,
+		image.height,
+		image.channels as 1 | 2 | 3 | 4,
+	)
 
 	if (signal?.aborted) {
 		return
@@ -591,7 +641,7 @@ export async function processImageToTextTask(
 	if (request.prompt) {
 		textInputs = modelComponents!.tokenizer(request.prompt)
 	}
-	const imageInputs = await modelComponents.processor(image)
+	const imageInputs = await modelComponents.processor(rawImage)
 	const outputTokens = await modelComponents.model.generate({
 		...textInputs,
 		...imageInputs,
@@ -606,8 +656,6 @@ export async function processImageToTextTask(
 		text: outputText[0],
 	}
 }
-
-
 
 // see examples
 // https://huggingface.co/docs/transformers.js/guides/node-audio-processing
@@ -635,7 +683,7 @@ export async function processSpeechToTextTask(
 	})
 
 	let inputSamples = request.audio.samples
-	
+
 	if (request.audio.sampleRate !== 16000) {
 		inputSamples = await resampleAudioBuffer(request.audio.samples, {
 			inputSampleRate: request.audio.sampleRate,
@@ -685,11 +733,10 @@ export async function processTextToSpeechTask(
 		padding: true,
 		truncation: true,
 	})
-	
+
 	if (!('speakerEmbeddings' in modelComponents)) {
 		throw new Error('No speaker embeddings supplied')
 	}
-	
 
 	let speakerEmbeddings = modelComponents.speakerEmbeddings?.[Object.keys(modelComponents.speakerEmbeddings)[0]]
 
@@ -733,8 +780,15 @@ export async function processObjectRecognitionTask(
 	if (!request.image) {
 		throw new Error('No image provided')
 	}
-	const { data, info } = await request.image.handle.raw().toBuffer({ resolveWithObject: true })
-	const image = new RawImage(new Uint8ClampedArray(data), info.width, info.height, info.channels)
+	// const { data, info } = await request.image.handle.raw().toBuffer({ resolveWithObject: true })
+	// const image = new RawImage(new Uint8ClampedArray(data), info.width, info.height, info.channels)
+	const image = request.image
+	const rawImage = new RawImage(
+		new Uint8ClampedArray(image.data),
+		image.width,
+		image.height,
+		image.channels as 1 | 2 | 3 | 4,
+	)
 
 	if (signal?.aborted) {
 		return
@@ -755,7 +809,7 @@ export async function processObjectRecognitionTask(
 			padding: true,
 			truncation: true,
 		})
-		const imageInputs = await modelComponents.processor([image])
+		const imageInputs = await modelComponents.processor([rawImage])
 		const output = await modelComponents.model({
 			...labelInputs,
 			pixel_values: imageInputs.pixel_values[0].unsqueeze_(0),
@@ -782,7 +836,7 @@ export async function processObjectRecognitionTask(
 		}
 	} else {
 		// @ts-ignore
-		const { pixel_values, pixel_mask } = await modelComponents.processor.feature_extractor([image])
+		const { pixel_values, pixel_mask } = await modelComponents.processor.feature_extractor([rawImage])
 		const output = await modelComponents.model({ pixel_values, pixel_mask })
 		// @ts-ignore
 		const processed = modelComponents.processor.feature_extractor.post_process_object_detection(

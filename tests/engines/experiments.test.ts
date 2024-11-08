@@ -4,7 +4,7 @@ import { ModelServer } from '#package/server.js'
 import { ChatMessage, ToolDefinition } from '#package/types/index.js'
 import { ChatWithVisionEngine } from '#package/experiments/ChatWithVision.js'
 import { VoiceFunctionCallEngine } from '#package/experiments/VoiceFunctionCall.js'
-import { createChatCompletion } from '../util'
+import { createChatCompletion } from '../util/completions.js'
 import { loadImageFromUrl } from '#package/lib/loadImage.js'
 import { loadAudioFromFile } from '#package/lib/loadAudio.js'
 

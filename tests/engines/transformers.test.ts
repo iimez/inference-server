@@ -1,12 +1,9 @@
 import { suite, test, expect, beforeAll, afterAll } from 'vitest'
-import { WaveFile } from 'wavefile'
-import { readFileSync, writeFileSync } from 'fs'
-import sharp from 'sharp'
 import { ModelServer } from '#package/server.js'
 import { cosineSimilarity } from '#package/lib/math.js'
-import { loadImageFromFile } from '#package/lib/loadImage.js'
-import { drawBoundingBoxes } from '#package/lib/drawBoundingBoxes.js'
-import { createPaddedCrop } from '#package/lib/createPaddedCrop.js'
+import { loadImageFromFile, saveImageToFile } from '#package/lib/loadImage.js'
+import { saveAudioToFile } from '#package/lib/loadAudio.js'
+import { drawBoundingBoxes, createPaddedCrop } from '../util/images.js'
 import {
 	CLIPTextModelWithProjection,
 	CLIPVisionModelWithProjection,
@@ -132,10 +129,9 @@ suite('basic', () => {
 			labels: ['cat', 'smurf'],
 		})
 		expect(res.objects).toBeTruthy()
-		// console.debug(res.objects)
 		expect(res.objects[0].label).toBe('cat')
-		// const testImage = await drawBoundingBoxes(image.handle, res.objects)
-		// await testImage.toFile('tests/fixtures/blue-cat-detected.png')
+		// const debugImage = await drawBoundingBoxes(image, res.objects)
+		// await saveImageToFile(debugImage, 'tests/fixtures/blue-cat-detected.png')
 	})
 
 	test('table recognition', async () => {
@@ -147,22 +143,17 @@ suite('basic', () => {
 		const tableObject = tableRes.objects[0]
 		expect(tableObject).toBeTruthy()
 		// padding because https://github.com/microsoft/table-transformer/issues/21
-		const paddedCrop = await createPaddedCrop(image.handle, tableObject.box, 40)
-		// await paddedCrop.toFile('tests/fixtures/table-detected.png')
+		const paddedCrop = await createPaddedCrop(image, tableObject.box, 40)
+		// await saveImageToFile(paddedCrop, 'tests/fixtures/table-detected.png')
 		const tableStructureRes = await modelServer.processObjectRecognitionTask({
 			model: 'table-transformer-structure-recognition',
-			image: {
-				handle: paddedCrop,
-				width: Math.round(tableObject.box.width) + 80,
-				height: Math.round(tableObject.box.height) + 80,
-				channels: image.channels,
-			},
+			image: paddedCrop,
 		})
 		expect(tableStructureRes.objects).toBeTruthy()
 		const tableRows = tableStructureRes.objects.filter((x) => x.label === 'table row')
 		expect(tableRows.length).toEqual(8)
 		// const imageWithBoundingBoxes = await drawBoundingBoxes(paddedCrop, tableRows)
-		// await imageWithBoundingBoxes.toFile('tests/fixtures/table-detected-rows.png')
+		// await saveImageToFile(imageWithBoundingBoxes, 'tests/fixtures/table-detected-rows.png')
 	})
 
 	test('text to speech to text', async () => {
@@ -171,9 +162,7 @@ suite('basic', () => {
 			text: 'Hello world, this is a test synthesizing speech.',
 		})
 		expect(speechRes.audio).toBeTruthy()
-		// const wav = new WaveFile();
-		// wav.fromScratch(speechRes.audio.channels, speechRes.audio.sampleRate, '32f', speechRes.audio.samples);
-		// writeFileSync('tests/fixtures/speecht5.wav', wav.toBuffer());
+		// await saveAudioToFile(speechRes.audio, 'tests/fixtures/speecht5.wav')
 		const transcriptionRes = await modelServer.processSpeechToTextTask({
 			model: 'whisper-base',
 			audio: speechRes.audio,
@@ -226,30 +215,15 @@ suite('basic', () => {
 		const redCatImageEmbedding = Array.from(res.embeddings[1])
 		const blueCatTextEmbedding = Array.from(res.embeddings[2])
 		const redCatTextEmbedding = Array.from(res.embeddings[3])
-		const textSimilarity = cosineSimilarity(
-			blueCatTextEmbedding,
-			redCatTextEmbedding,
-		)
+		const textSimilarity = cosineSimilarity(blueCatTextEmbedding, redCatTextEmbedding)
 		expect(textSimilarity.toFixed(2)).toBe('0.56')
-		const textImageSimilarity = cosineSimilarity(
-			blueCatTextEmbedding,
-			blueCatImageEmbedding,
-		)
+		const textImageSimilarity = cosineSimilarity(blueCatTextEmbedding, blueCatImageEmbedding)
 		expect(textImageSimilarity.toFixed(2)).toBe('0.29')
-		const textImageSimilarity2 = cosineSimilarity(
-			redCatTextEmbedding,
-			blueCatImageEmbedding,
-		)
+		const textImageSimilarity2 = cosineSimilarity(redCatTextEmbedding, blueCatImageEmbedding)
 		expect(textImageSimilarity2.toFixed(2)).toBe('0.12')
-		const textImageSimilarity3 = cosineSimilarity(
-			blueCatTextEmbedding,
-			redCatImageEmbedding,
-		)
+		const textImageSimilarity3 = cosineSimilarity(blueCatTextEmbedding, redCatImageEmbedding)
 		expect(textImageSimilarity3.toFixed(2)).toBe('0.05')
-		const textImageSimilarity4 = cosineSimilarity(
-			redCatTextEmbedding,
-			redCatImageEmbedding,
-		)
+		const textImageSimilarity4 = cosineSimilarity(redCatTextEmbedding, redCatImageEmbedding)
 		expect(textImageSimilarity4.toFixed(2)).toBe('0.29')
 	})
 
@@ -268,9 +242,7 @@ suite('basic', () => {
 		})
 		const searchEmbedding = res.embeddings[0]
 		const sentenceEmbeddings = res.embeddings.slice(1)
-		const similarities = sentenceEmbeddings.map((x) =>
-			cosineSimilarity(Array.from(searchEmbedding), Array.from(x)),
-		)
+		const similarities = sentenceEmbeddings.map((x) => cosineSimilarity(Array.from(searchEmbedding), Array.from(x)))
 		expect(similarities[0].toFixed(2)).toBe('0.79')
 	})
 })
