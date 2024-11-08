@@ -1,6 +1,6 @@
 ## inference-server
 
-Libraries and server to build AI applications doing local inference in node. Use it within your application, or as a microservice. Adapters to [llama.cpp](https://github.com/ggerganov/llama.cpp/) via [node-llama-cpp](https://github.com/withcatai/node-llama-cpp) and [gpt4all](https://github.com/nomic-ai/gpt4all). And [transformers.js](https://github.com/xenova/transformers.js/) using [ONNX](https://github.com/microsoft/onnxruntime/tree/main/js#onnxruntime-node)!
+Libraries and server to build AI applications doing local inference in node. Use it within your application, or as a microservice. Adapters to [llama.cpp](https://github.com/ggerganov/llama.cpp/) via [node-llama-cpp](https://github.com/withcatai/node-llama-cpp) and [gpt4all](https://github.com/nomic-ai/gpt4all), [transformers.js](https://github.com/xenova/transformers.js/) and [@lmagder/node-stable-diffusion-cpp](https://github.com/lmagder/node-stable-diffusion.cpp).
 
 The project includes a model resource pool, an inference queue and a HTTP API server. Model file management is abstracted away as much as possible - configure a URL and go. This package is useful for quick model evaluations and experiments (in JavaScript), small-scale chatbots, resource efficient assistants on edge devices, or any applications where private & offline are interesting criteria. For other - not node-based solutions - check out the [related solutions](#related-solutions) section.
 
@@ -106,6 +106,7 @@ Currently supported inference engines are:
 | node-llama-cpp | `node-llama-cpp >= 3.0.0` |
 | gpt4all | `gpt4all >= 4.0.0` |
 | transformers-js | `@huggingface/transformers >= 3.0.0` |
+| stable-diffusion-cpp | `@lmagder/node-stable-diffusion-cpp >= 0.1.6` |
 
 See [engine docs](./docs/engines.md) for more information on each.
 
@@ -167,11 +168,13 @@ Not in any particular order:
 - [x] Allow "prefilling" (partial) assistant responses like outlined [here](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/prefill-claudes-response#how-to-prefill-claudes-response)
 - [x] non-chat text completions: Allow reuse of context
 - [x] non-chat text completions: Support preloading of prefixes
+- [x] Add stable-diffusion engine
 - [ ] Add some light jsdoc for server/pool/store methods
-- [ ] utilize node-llama-cpp's support to reuse LlamaModel instances with multiple contexts
+- [ ] utilize node-llama-cpp's support to reuse LlamaModel weights with multiple contexts (across instances)
 - [ ] Support transformer.js for text-completion tasks ([not yet supported in Node.js](https://github.com/huggingface/transformers.js/blob/e129c47c65a049173f35e6263fd8d9f660dfc1a7/src/models.js#L240-L242))
 - [ ] Implement more transformer.js tasks (`imageToImage`, `textToImage`, `textToSpeech`?)
 - [ ] Infill completion support https://github.com/withcatai/node-llama-cpp/blob/beta/src/evaluator/LlamaCompletion.ts#L322-L336
+- [ ] Support HF auth and support HF-like model repositories on other domains
 - [ ] Find a way to type available custom engines (and their options?)
 - [ ] Rework GPU+device usage / lock (Support multiple models on gpu in cases where its possible)
 - [ ] Add engine interfaces for resource use (and estimates, see https://github.com/ggerganov/llama.cpp/issues/4315 and https://github.com/withcatai/node-llama-cpp/blob/beta/src/gguf/insights/utils/resolveContextContextSizeOption.ts)
@@ -182,7 +185,6 @@ Not in any particular order:
 - [ ] Add `n` parameter support to node-llama-cpp chat completions
 - [ ] [CLI](https://github.com/iimez/inference-server/discussions/7)
 - [ ] Replace express with tinyhttp
-- [ ] Add stable-diffusion engine
 
 ### Contributing
 
@@ -190,7 +192,6 @@ If you are using this package - let me know where [you would like this to go](ht
 
 #### Possible Future Goals
 
-- See if it would make sense to implement engines for [leejet/stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) and [onnxruntime-node](https://www.npmjs.com/package/onnxruntime-node)
 - Create a separate HTTP API thats independent of the OpenAI spec and stateful. See [discussion](https://github.com/iimez/inference-server/discussions/8).
 - Add a clientside library (React hooks?) for use of above API.
 - Provide a Docker image. And maybe a Prometheus endpoint.
