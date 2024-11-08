@@ -22,21 +22,39 @@ async function getDirSize(dir: string): Promise<number> {
 	return size
 }
 
+function isModelLocation(relPath: string): boolean {
+	const parts = relPath.split(path.sep)
+	if (parts.length < 2) {
+		return false
+	}
+	if (parts[0] === 'huggingface.co') {
+		return parts.length === 3
+	} else {
+		return parts.length === 2
+	}
+}
+
 interface File {
 	name: string
+	absPath: string
+	relPath: string
 	type: 'file'
 	size: number
 	sizeFormatted: string
 	isUsedByConfig: boolean
+	isModelLocation: boolean
 }
 
 interface Directory {
 	name: string
+	absPath: string
+	relPath: string
 	type: 'directory'
 	size: number
 	sizeFormatted: string
 	children: FileTreeItem[]
 	isUsedByConfig: boolean
+	isModelLocation: boolean
 }
 
 export type FileTreeItem = File | Directory
@@ -45,6 +63,7 @@ interface BuildFileTreeOptions {
 	includeFiles: boolean
 	includeUnused?: boolean
 	usedModelPaths?: string[]
+	cacheRoot?: string
 }
 
 const defaultOptions: BuildFileTreeOptions = {
@@ -57,8 +76,9 @@ async function buildFileTree(dir: string, opts: BuildFileTreeOptions = defaultOp
 	const includeUnused = opts.includeUnused ?? defaultOptions.includeUnused
 	const usedModelPaths = opts.usedModelPaths ?? []
 	const isUsedModelPath = (modelPath: string) => {
-		// - any used model paths are a prefix of the given path
-		// - any used model paths are a prefix of the parent directory of the given path
+		// its "used", if:
+		// - any usedModelPaths is a prefix of the given modelPath, or
+		// - any usedModelPaths is a prefix of the parent directory of the given modelPath
 		return usedModelPaths.some((usedPath) => {
 			return modelPath.startsWith(usedPath) || usedPath.startsWith(modelPath)
 		})
@@ -67,31 +87,38 @@ async function buildFileTree(dir: string, opts: BuildFileTreeOptions = defaultOp
 	for (const item of items) {
 		if (item.name.startsWith('.')) continue
 
-		const itemPath = path.join(dir, item.name)
+		const absPath = path.join(dir, item.name)
+		const relPath = path.relative(opts.cacheRoot ?? dir, absPath)
 
 		if (item.isDirectory()) {
-			const size = await getDirSize(itemPath)
-			const children = await buildFileTree(itemPath, opts)
-			const isUsed = isUsedModelPath(itemPath)
+			const size = await getDirSize(absPath)
+			const children = await buildFileTree(absPath, opts)
+			const isUsed = isUsedModelPath(absPath)
 			if (!includeUnused && !isUsed) continue
 			result.push({
 				name: item.name,
+				absPath: absPath,
+				relPath,
 				type: 'directory',
 				size,
 				sizeFormatted: prettyBytes(size),
 				isUsedByConfig: isUsed,
+				isModelLocation: isModelLocation(relPath),
 				children,
 			})
 		} else if (opts.includeFiles) {
-			const isUsed = isUsedModelPath(itemPath)
+			const isUsed = isUsedModelPath(absPath)
 			if (!includeUnused && !isUsed) continue
-			const stats = await fs.stat(itemPath)
+			const stats = await fs.stat(absPath)
 			result.push({
 				name: item.name,
+				absPath: absPath,
+				relPath,
 				type: 'file',
 				size: stats.size,
 				sizeFormatted: prettyBytes(stats.size),
 				isUsedByConfig: isUsed,
+				isModelLocation: isModelLocation(relPath),
 			})
 		}
 	}
@@ -100,7 +127,7 @@ async function buildFileTree(dir: string, opts: BuildFileTreeOptions = defaultOp
 }
 
 export interface ModelCacheInfo {
-	inventory: FileTreeItem[]
+	fileTree: FileTreeItem[]
 }
 
 interface IndexModelCacheOptions {
@@ -127,12 +154,13 @@ export async function indexModelCache(dir: string, opts: IndexModelCacheOptions 
 		}
 	}
 
-	const cacheInventory = await buildFileTree(dir, {
+	const fileTree = await buildFileTree(dir, {
+		cacheRoot: dir,
 		includeFiles: opts?.includeFiles ?? defaultOptions.includeFiles,
 		includeUnused: opts?.includeUnused,
 		usedModelPaths,
 	})
 	return {
-		inventory: cacheInventory,
+		fileTree,
 	}
 }

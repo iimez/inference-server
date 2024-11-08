@@ -3,60 +3,16 @@ import prettyBytes from 'pretty-bytes'
 import chalk from 'chalk'
 import path from 'node:path'
 import { getCacheDirPath } from '#package/lib/getCacheDirPath.js'
-import { FileTreeItem, indexModelCache } from '#package/cli/lib/indexModelCache.js'
+import { indexModelCache } from '#package/cli/lib/indexModelCache.js'
 import { loadConfig } from '#package/cli/lib/loadConfig.js'
+import { renderListView } from '#package/cli/lib/renderListView.js'
+import { renderTreeView } from '#package/cli/lib/renderTreeView.js'
 
 interface ListCommandArgs {
 	files: boolean
 	json: boolean
 	list: boolean
 	all?: boolean
-}
-
-function renderTreeView(tree: FileTreeItem[], prefix = '', isLast = true): string[] {
-	const output: string[] = []
-
-	for (let i = 0; i < tree.length; i++) {
-		const item = tree[i]
-		const isLastItem = i === tree.length - 1
-		const branch = isLastItem ? '└── ' : '├── '
-		const childPrefix = prefix + (isLastItem ? '    ' : '│   ')
-
-		if (item.type === 'directory') {
-			output.push(`${prefix}${branch}${chalk.blue(item.name)} ${chalk.yellow(`(${item.sizeFormatted})`)}`)
-			if (item.children) {
-				const childLines = renderTreeView(item.children, childPrefix, isLastItem)
-				output.push(...childLines)
-			}
-		} else {
-			output.push(`${prefix}${branch}${chalk.gray(item.name)} ${chalk.yellow(`(${item.sizeFormatted})`)}`)
-		}
-	}
-
-	return output
-}
-
-function renderListView(tree: FileTreeItem[], parentPath = ''): string[] {
-	const output: string[] = []
-
-	for (const item of tree) {
-		const currentPath = parentPath ? path.join(parentPath, item.name) : item.name
-		if (item.type === 'directory') {
-			const pathSegments = path.posix.normalize(currentPath).split('/')
-			if (pathSegments[0] === 'huggingface.co') {
-				if (pathSegments.length === 3) {
-					output.push(`${chalk.blue(currentPath)} ${chalk.yellow(`(${item.sizeFormatted})`)}`)
-				}
-			} else {
-				output.push(`${chalk.blue(currentPath)} ${chalk.yellow(`(${item.sizeFormatted})`)}`)
-			}
-			output.push(...renderListView(item.children, currentPath))
-		} else {
-			output.push(`${chalk.gray(currentPath)} ${chalk.yellow(`(${item.sizeFormatted})`)}`)
-		}
-	}
-
-	return output
 }
 
 async function listModels({
@@ -84,10 +40,10 @@ async function listModels({
 			includeUnused: showAll ?? (config ? false : true),
 			usedModels: config?.options.models,
 		})
-		const totalSize = cacheInfo.inventory.reduce((acc, model) => acc + model.size, 0)
+		const totalSize = cacheInfo.fileTree.reduce((acc, model) => acc + model.size, 0)
 
 		if (json) {
-			console.log(JSON.stringify(cacheInfo.inventory, null, 2))
+			console.log(JSON.stringify(cacheInfo.fileTree, null, 2))
 		} else {
 			if (configPath) {
 				console.log(chalk.cyanBright(`Loaded config from: ${configPath}`))
@@ -97,7 +53,7 @@ async function listModels({
 			console.log(chalk.green(`\nModels in cache:`))
 
 			// Render either as tree or list
-			const rendered = list ? renderListView(cacheInfo.inventory) : renderTreeView(cacheInfo.inventory)
+			const rendered = list ? renderListView(cacheInfo.fileTree) : renderTreeView(cacheInfo.fileTree)
 			console.log(rendered.join('\n'))
 		}
 	} catch (error) {
