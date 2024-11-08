@@ -99,7 +99,7 @@ async function prepareModels(configPath?: string, concurrency?: number): Promise
 			)
 		}
 
-		console.log(chalk.blue(`Using config from: ${path}`))
+		console.log(chalk.blue(`Using config from: ${configPath}`))
 		await prepareAllModels(config.options, concurrency)
 
 		console.log(chalk.green('\nModel preparation complete!'))
