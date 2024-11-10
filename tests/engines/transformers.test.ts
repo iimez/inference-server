@@ -10,6 +10,7 @@ import {
 	Florence2ForConditionalGeneration,
 	SpeechT5ForTextToSpeech,
 	SpeechT5Model,
+	MobileLLMForCausalLM,
 	WhisperForConditionalGeneration,
 } from '@huggingface/transformers'
 
@@ -112,6 +113,13 @@ suite('basic', () => {
 				task: 'object-detection',
 				dtype: 'fp16',
 			},
+			mobilellm: {
+				url: 'https://huggingface.co/onnx-community/MobileLLM-600M',
+				engine: 'transformers-js',
+				task: 'text-completion',
+				modelClass: MobileLLMForCausalLM,
+				dtype: 'fp16',
+			},
 		},
 	})
 	beforeAll(async () => {
@@ -119,6 +127,17 @@ suite('basic', () => {
 	})
 	afterAll(async () => {
 		await modelServer.stop()
+	})
+	
+	test('text completion', async () => {
+		const res = await modelServer.processTextCompletionTask({
+			model: 'mobilellm',
+			prompt: 'The opposite of orange is',
+			maxTokens: 32,
+			temperature: 2,
+			stop: ['\n'],
+		})
+		expect(res.text).toBeTruthy()
 	})
 
 	test('cat recognition', async () => {

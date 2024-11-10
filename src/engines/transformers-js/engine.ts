@@ -33,6 +33,7 @@ import {
 	Tensor,
 	SpeechT5ForTextToSpeech,
 	WhisperForConditionalGeneration,
+	ModelOutput,
 } from '@huggingface/transformers'
 import { LogLevels } from '#package/lib/logger.js'
 import { resampleAudioBuffer } from '#package/lib/loadAudio.js'
@@ -154,7 +155,6 @@ export async function prepareModel(
 		{ modelId, branch }: { modelId: string; branch: string },
 		requiredComponents: string[] = ['model', 'tokenizer', 'processor', 'vocoder'],
 	) => {
-		console.debug({ modelOpts, modelId, branch, requiredComponents })
 		const modelClass = normalizeTransformersJsClass<TransformersJsModelClass>(modelOpts.modelClass, AutoModel)
 		const downloadPromises: Record<string, Promise<any> | undefined> = {}
 		const progressCallback = (progress: TransformersJsDownloadProgress) => {
@@ -240,7 +240,7 @@ export async function prepareModel(
 		disposeModelComponents(modelComponents)
 		// return modelComponents
 	}
-	
+
 	const downloadSpeakerEmbeddings = async (speakerEmbeddings: SpeakerEmbeddings) => {
 		const speakerEmbeddingsPromises = []
 		for (const speakerEmbedding of Object.values(speakerEmbeddings)) {
@@ -282,7 +282,7 @@ export async function prepareModel(
 		const directoriesToCopy: Record<string, string> = {}
 		const modelCacheDir = path.join(env.cacheDir, modelId)
 		directoriesToCopy[modelCacheDir] = config.location
-		const prepareDownloadedVocoder = (vocoderOpts: { url?: string, file?: string }) => {
+		const prepareDownloadedVocoder = (vocoderOpts: { url?: string; file?: string }) => {
 			if (!vocoderOpts.url) {
 				return
 			}
@@ -295,7 +295,7 @@ export async function prepareModel(
 			const vocoderCacheDir = path.join(env.cacheDir, modelId)
 			directoriesToCopy[vocoderCacheDir] = vocoderPath
 		}
-		const prepareDownloadedProcessor = (processorOpts: { url?: string, file?: string }) => {
+		const prepareDownloadedProcessor = (processorOpts: { url?: string; file?: string }) => {
 			if (!processorOpts.url) {
 				return
 			}
@@ -423,7 +423,6 @@ export async function prepareModel(
 
 export async function createInstance({ config, log }: EngineContext<TransformersJsModelConfig>, signal?: AbortSignal) {
 	const modelLoadPromises: Promise<unknown>[] = []
-	// const noModelConfigured = !config.textModel && !config.visionModel && !config.speechModel
 
 	modelLoadPromises.push(loadModelComponents(config, config))
 	if (config.textModel) {
@@ -450,7 +449,8 @@ export async function createInstance({ config, log }: EngineContext<Transformers
 		speech: models[3] as SpeechModelComponents & TransformersJsModelComponents,
 	}
 
-	// TODO preload whisper / any speech to text?
+	// TODO preload by doing a tiny generation depending on model type?
+	// ie for whisper, this seems to speed up the initial response time
 	// await model.generate({
 	// 	input_features: full([1, 80, 3000], 0.0),
 	// 	max_new_tokens: 1,
@@ -473,6 +473,9 @@ export async function disposeInstance(instance: TransformersJsInstance) {
 	await Promise.all(disposePromises)
 }
 
+// TextGenerationPipeline https://github.com/huggingface/transformers.js/blob/705cfc456f8b8f114891e1503b0cdbaa97cf4b11/src/pipelines.js#L977
+// Generation Args https://github.com/huggingface/transformers.js/blob/705cfc456f8b8f114891e1503b0cdbaa97cf4b11/src/generation/configuration_utils.js#L11
+// default Model.generate https://github.com/huggingface/transformers.js/blob/705cfc456f8b8f114891e1503b0cdbaa97cf4b11/src/models.js#L1378
 export async function processTextCompletionTask(
 	{ request, config, log, onChunk }: EngineTextCompletionArgs<TransformersJsModelConfig>,
 	instance: TransformersJsInstance,
@@ -487,24 +490,82 @@ export async function processTextCompletionTask(
 	if (!('generate' in instance.primary.model)) {
 		throw new Error('Text model does not support generation.')
 	}
-	const inputTokens = instance.primary.tokenizer(request.prompt)
-	const outputTokens = await instance.primary.model.generate({
-		...inputTokens,
+	instance.primary.tokenizer.padding_side = 'left'
+	const inputs = instance.primary.tokenizer(request.prompt, {
+		add_special_tokens: false,
+		padding: true,
+		truncation: true,
+	})
+	
+	// TODO implement stop. look at transformers.js StoppingCriteria?
+	// if (request.stop) {
+	// 	const stopTokenTexts = request.stop ? request.stop : []
+	// 	console.debug('stopTokenTexts', stopTokenTexts)
+	// 	const stopTokens = instance.primary.tokenizer(stopTokenTexts, {
+	// 		add_special_tokens: false,
+	// 		padding: false,
+	// 		truncation: false,
+	// 	}).input_ids
+	// 	// console.debug('tokenizer', instance.primary.tokenizer)
+	// 	console.debug('stopTokens', stopTokens, stopTokens[0])
+	// }
+	
+	const streamer = new TextStreamer(instance.primary.tokenizer, {
+		callback_function: (output: string) => {
+			if (onChunk && output !== request.prompt) {
+				const tokens = instance.primary!.tokenizer!.encode(output)
+				onChunk({ text: output, tokens: tokens })
+			}
+		},
+	})
+
+	const outputs: ModelOutput = await instance.primary.model.generate({
+		...inputs,
+		renormalize_logits: true,
+		output_scores: true, // TODO currently no effect
+		return_dict_in_generate: true,
+		// common params
 		max_new_tokens: request.maxTokens ?? 128,
+		repetition_penalty: request.repeatPenalty ?? 2.0, // 1 = no penalty
+		temperature: request.temperature ?? 1.0,
+		top_k: request.topK ?? 50,
+		top_p: request.topP ?? 1.0,
+		num_beams: 1,
+		// num_return_sequences: 2, // TODO https://github.com/huggingface/transformers.js/issues/1007
+		// eos_token_id: stopTokens[0], // TODO implement stop
+		length_penalty: 0,
+		streamer,
+		// exclusive params
+		// length_penalty: -64, // Since the score is the log likelihood of the sequence (i.e. negative), `length_penalty` > 0.0 promotes longer sequences, while `length_penalty` < 0.0 encourages shorter sequences.
+		// The tuple shall consist of: `(start_index, decay_factor)` where `start_index` indicates where penalty starts and `decay_factor` represents the factor of exponential decay.
+		// exponential_decay_length_penalty: [1, 64],
+		// typical_p: 1,
+		// epsilon_cutoff: 0,
+		// eta_cutoff: 0,
+		// diversity_penalty: 0,
+		// encoder_repetition_penalty: 1.0, // 1 = no penalty
+		// no_repeat_ngram_size: 0,
+		// forced_eos_token_id: [],
+		// bad_words_ids: [],
+		// force_words_ids: [],
+		// suppress_tokens: [],
 	})
 	// @ts-ignore
-	const outputText = instance.primary.tokenizer.batch_decode(outputTokens, {
+	const outputTexts = instance.primary.tokenizer.batch_decode(outputs.sequences, {
 		skip_special_tokens: true,
+		clean_up_tokenization_spaces: true,
 	})
+	const generatedText = outputTexts[0].slice(request.prompt.length)
+	// @ts-ignore
+	const outputTokenCount = outputs.sequences.tolist().reduce((acc, sequence) => acc + sequence.length, 0)
+	const inputTokenCount = inputs.input_ids.size
 
 	return {
 		finishReason: 'eogToken',
-		text: outputText[0],
-		promptTokens: inputTokens.length,
-		// @ts-ignore
-		completionTokens: outputTokens.length,
-		// @ts-ignore
-		contextTokens: inputTokens.length + outputTokens.length,
+		text: generatedText,
+		promptTokens: inputTokenCount,
+		completionTokens: outputTokenCount,
+		contextTokens: inputTokenCount + outputTokenCount,
 	}
 }
 
@@ -714,7 +775,7 @@ export async function processSpeechToTextTask(
 	}
 }
 
-// see https://github.com/huggingface/transformers.js/blob/e129c47c65a049173f35e6263fd8d9f660dfc1a7/src/pipelines.js#L2663
+// TextGenerationPipeline https://github.com/huggingface/transformers.js/blob/e129c47c65a049173f35e6263fd8d9f660dfc1a7/src/pipelines.js#L2663
 export async function processTextToSpeechTask(
 	{ request, config, log }: EngineTextToSpeechArgs,
 	instance: TransformersJsInstance,
@@ -780,15 +841,8 @@ export async function processObjectRecognitionTask(
 	if (!request.image) {
 		throw new Error('No image provided')
 	}
-	// const { data, info } = await request.image.handle.raw().toBuffer({ resolveWithObject: true })
-	// const image = new RawImage(new Uint8ClampedArray(data), info.width, info.height, info.channels)
 	const image = request.image
-	const rawImage = new RawImage(
-		new Uint8ClampedArray(image.data),
-		image.width,
-		image.height,
-		image.channels as 1 | 2 | 3 | 4,
-	)
+	const rawImage = new RawImage(new Uint8ClampedArray(image.data), image.width, image.height, image.channels)
 
 	if (signal?.aborted) {
 		return

@@ -102,5 +102,12 @@ export const config = {
 			task: 'object-detection',
 			dtype: 'fp16',
 		},
+		mobilellm: {
+			url: 'https://huggingface.co/onnx-community/MobileLLM-600M',
+			engine: 'transformers-js',
+			task: 'text-completion',
+			modelClass: 'MobileLLMForCausalLM',
+			dtype: 'fp16',
+		},
 	},
 }
