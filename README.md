@@ -131,48 +131,17 @@ CUDA binaries are distributed with each engine seperately, which leads to an ext
 
 Not in any particular order:
 
-- [x] Automatic download of GGUF's with ipull
-- [x] Engine abstraction
-- [x] Model instance pool and queue
-- [x] Basic OpenAI API compatibility
-- [x] POC of chat context reuse across requests
-- [x] Tests for context reuse and context leaking
-- [x] Logging Interface
-- [x] Better Examples
-- [x] GPU support
-- [x] node-llama-cpp context reuse
-- [x] Instance TTL
-- [x] Allow configuring model hashes / verification
-- [x] Improve template code / stop trigger support
-- [x] Support configuring a timeout on completion processing
-- [x] Logit bias / Token bias support
-- [x] Improve tests for longer conversations / context window shifting
-- [x] Embeddings APIs
-- [x] Improve node-llama-cpp token usage counts / TokenMeter
-- [x] Reuse download logic from node-llama-cpp to support split ggufs.
-- [x] Support preloading instances with context, like a long system message or few shot examples
-- [x] transformers.js engine
-- [x] Support custom engine implementations
-- [x] Make sure nothing clashes if multiple servers/stores are using the same cache directory
-- [x] See if we can install supported engines as peer deps
-- [x] Improve types, simpler node-llama-cpp grammar integration
-- [x] Restructure docs, add function calling & grammar usage docs
-- [x] TTL=0 should immediately dispose of instances instead of waiting (currently on avg 30s) for the next TTL check
-- [x] Expose node-llama-cpp context shift strategy, lora, allow json schema as input for `grammar`
-- [x] Improve types for tool definitions / json schema
-- [x] Make pool dispose / stop more robust
-- [x] Tests for cancellation and timeouts
-- [x] transformer.js text embeddings
-- [x] transformer.js image embeddings
+- [x] transformer.js text + image embeddings
 - [x] transformer.js multimodal image/text embeddings (see [jina-clip-v1](https://github.com/xenova/transformers.js/issues/793) and [nomic-embed-vision](https://github.com/xenova/transformers.js/issues/848) issues.)
 - [x] Allow "prefilling" (partial) assistant responses like outlined [here](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/prefill-claudes-response#how-to-prefill-claudes-response)
 - [x] non-chat text completions: Allow reuse of context
 - [x] non-chat text completions: Support preloading of prefixes
 - [x] Add stable-diffusion engine
+- [x] Implement more transformer.js tasks
+- [x] [CLI](https://github.com/iimez/inference-server/discussions/7)
 - [ ] Add some light jsdoc for server/pool/store methods
 - [ ] utilize node-llama-cpp's support to reuse LlamaModel weights with multiple contexts (across instances)
 - [ ] Support transformer.js for text-completion tasks ([not yet supported in Node.js](https://github.com/huggingface/transformers.js/blob/e129c47c65a049173f35e6263fd8d9f660dfc1a7/src/models.js#L240-L242))
-- [ ] Implement more transformer.js tasks (`imageToImage`, `textToImage`, `textToSpeech`?)
 - [ ] Infill completion support https://github.com/withcatai/node-llama-cpp/blob/beta/src/evaluator/LlamaCompletion.ts#L322-L336
 - [ ] Support HF auth and support HF-like model repositories on other domains
 - [ ] Find a way to type available custom engines (and their options?)
@@ -183,7 +152,6 @@ Not in any particular order:
 - [ ] Add image generation endpoint in oai api
 - [ ] Add transcript endpoint in oai api
 - [ ] Add `n` parameter support to node-llama-cpp chat completions
-- [ ] [CLI](https://github.com/iimez/inference-server/discussions/7)
 - [ ] Replace express with tinyhttp
 
 ### Contributing
