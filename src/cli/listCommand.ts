@@ -35,6 +35,7 @@ async function listModels({
 	}
 
 	try {
+		// look up cached files on disk
 		const cacheInfo = await indexModelCache(modelsCachePath, {
 			includeFiles: showFiles,
 			includeUnused: showAll ?? (config ? false : true),
@@ -50,7 +51,7 @@ async function listModels({
 			}
 			console.log(chalk.cyan(`Models cache path:  ${modelsCachePath}`))
 			console.log(chalk.cyan(`Total cache size:   ${prettyBytes(totalSize)}`))
-			console.log(chalk.green(`\nModels in cache:`))
+			console.log(chalk.green(`\n${cacheInfo.fileCount} files:`))
 
 			// Render either as tree or list
 			const rendered = list ? renderListView(cacheInfo.fileTree) : renderTreeView(cacheInfo.fileTree)

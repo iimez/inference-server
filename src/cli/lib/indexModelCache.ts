@@ -22,15 +22,21 @@ async function getDirSize(dir: string): Promise<number> {
 	return size
 }
 
-function isModelLocation(relPath: string): boolean {
+async function isLikelyModelLocation(absPath: string, relPath: string): Promise<boolean> {
 	const parts = relPath.split(path.sep)
-	if (parts.length < 2) {
+	const stat = await fs.stat(absPath).catch(() => null)
+	if (!stat) {
 		return false
+	}
+	const isJson = parts[parts.length - 1].endsWith('.json')
+	const isSmallFile = stat.size < 1024 * 1024
+	if (parts.length < 2) {
+		return stat.isFile() && !isJson && !isSmallFile
 	}
 	if (parts[0] === 'huggingface.co') {
 		return parts.length === 3
 	} else {
-		return parts.length === 2
+		return parts.length === 2 && !isJson && !isSmallFile
 	}
 }
 
@@ -41,7 +47,6 @@ interface File {
 	type: 'file'
 	size: number
 	sizeFormatted: string
-	isUsedByConfig: boolean
 	isModelLocation: boolean
 }
 
@@ -53,48 +58,37 @@ interface Directory {
 	size: number
 	sizeFormatted: string
 	children: FileTreeItem[]
-	isUsedByConfig: boolean
 	isModelLocation: boolean
+	fileCount: number
 }
 
 export type FileTreeItem = File | Directory
 
 interface BuildFileTreeOptions {
-	includeFiles: boolean
-	includeUnused?: boolean
-	usedModelPaths?: string[]
 	cacheRoot?: string
 }
 
-const defaultOptions: BuildFileTreeOptions = {
-	includeFiles: false,
-}
-
-async function buildFileTree(dir: string, opts: BuildFileTreeOptions = defaultOptions): Promise<FileTreeItem[]> {
+async function buildFileTree(dir: string, opts: BuildFileTreeOptions = {}): Promise<FileTreeItem[]> {
 	const items = await fs.readdir(dir, { withFileTypes: true })
 	const result: FileTreeItem[] = []
-	const includeUnused = opts.includeUnused ?? defaultOptions.includeUnused
-	const usedModelPaths = opts.usedModelPaths ?? []
-	const isUsedModelPath = (modelPath: string) => {
-		// its "used", if:
-		// - any usedModelPaths is a prefix of the given modelPath, or
-		// - any usedModelPaths is a prefix of the parent directory of the given modelPath
-		return usedModelPaths.some((usedPath) => {
-			return modelPath.startsWith(usedPath) || usedPath.startsWith(modelPath)
-		})
-	}
 
 	for (const item of items) {
 		if (item.name.startsWith('.')) continue
 
 		const absPath = path.join(dir, item.name)
 		const relPath = path.relative(opts.cacheRoot ?? dir, absPath)
-
+		const isModelLocation = await isLikelyModelLocation(absPath, relPath)
 		if (item.isDirectory()) {
 			const size = await getDirSize(absPath)
 			const children = await buildFileTree(absPath, opts)
-			const isUsed = isUsedModelPath(absPath)
-			if (!includeUnused && !isUsed) continue
+			const fileCount = children.reduce((count, child) => {
+				if (child.type === 'file') {
+					return count + 1
+				} else {
+					return count + (child.fileCount || 0)
+				}
+			}, 0)
+
 			result.push({
 				name: item.name,
 				absPath: absPath,
@@ -102,13 +96,11 @@ async function buildFileTree(dir: string, opts: BuildFileTreeOptions = defaultOp
 				type: 'directory',
 				size,
 				sizeFormatted: prettyBytes(size),
-				isUsedByConfig: isUsed,
-				isModelLocation: isModelLocation(relPath),
+				isModelLocation,
+				fileCount,
 				children,
 			})
-		} else if (opts.includeFiles) {
-			const isUsed = isUsedModelPath(absPath)
-			if (!includeUnused && !isUsed) continue
+		} else {
 			const stats = await fs.stat(absPath)
 			result.push({
 				name: item.name,
@@ -117,8 +109,7 @@ async function buildFileTree(dir: string, opts: BuildFileTreeOptions = defaultOp
 				type: 'file',
 				size: stats.size,
 				sizeFormatted: prettyBytes(stats.size),
-				isUsedByConfig: isUsed,
-				isModelLocation: isModelLocation(relPath),
+				isModelLocation,
 			})
 		}
 	}
@@ -126,8 +117,37 @@ async function buildFileTree(dir: string, opts: BuildFileTreeOptions = defaultOp
 	return result
 }
 
+function filterFileTree(tree: FileTreeItem[], predicate: (item: FileTreeItem) => boolean): FileTreeItem[] {
+	const result: FileTreeItem[] = []
+	for (const item of tree) {
+		if (predicate(item)) {
+			if (item.type === 'directory') {
+				const children = filterFileTree(item.children, predicate)
+				result.push({
+					...item,
+					children,
+				})
+			} else {
+				result.push(item)
+			}
+		}
+	}
+	return result
+}
+
+function calculateFileCount(tree: FileTreeItem[]): number {
+	return tree.reduce((count, child) => {
+		if (child.type === 'file') {
+			return count + 1
+		} else {
+			return count + calculateFileCount(child.children)
+		}
+	}, 0)
+}
+
 export interface ModelCacheInfo {
 	fileTree: FileTreeItem[]
+	fileCount: number
 }
 
 interface IndexModelCacheOptions {
@@ -137,6 +157,7 @@ interface IndexModelCacheOptions {
 }
 
 export async function indexModelCache(dir: string, opts: IndexModelCacheOptions = {}): Promise<ModelCacheInfo> {
+	// keep track of which models paths are used in the config so we can determine which files belong to which model
 	const usedModelPaths: string[] = []
 	if (opts.usedModels) {
 		for (const model of Object.values(opts.usedModels)) {
@@ -149,18 +170,60 @@ export async function indexModelCache(dir: string, opts: IndexModelCacheOptions 
 			// normalize to dir if its a file
 			const stat = await fs.stat(location).catch(() => null)
 			if (stat) {
-				usedModelPaths.push(stat.isDirectory() ? location : path.dirname(location))
+				const isDir = stat.isDirectory()
+				const subPath = path.relative(dir, location)
+				const subPathParts = subPath.split(path.sep)
+
+				if (subPathParts.length > 2) {
+					// assume hf like structure, pick first three segments
+					usedModelPaths.push(path.join(dir, subPathParts.slice(0, 3).join(path.sep)))
+				} else {
+					// any other model source
+					let usedPath = location
+					if (!isDir) {
+						// remove file extension
+						usedPath = location.slice(0, -path.extname(location).length)
+					}
+					usedModelPaths.push(usedPath)
+				}
 			}
 		}
 	}
 
-	const fileTree = await buildFileTree(dir, {
+	let fileTree = await buildFileTree(dir, {
 		cacheRoot: dir,
-		includeFiles: opts?.includeFiles ?? defaultOptions.includeFiles,
-		includeUnused: opts?.includeUnused,
-		usedModelPaths,
 	})
+
+	const filterUnused = !opts.includeUnused && usedModelPaths.length > 0
+	const filterFiles = !opts.includeFiles
+	const isUsedModelPath = (modelPath: string) => {
+		// its "used", if:
+		// - any usedModelPaths is a prefix of the given modelPath, or
+		// - any usedModelPaths is a prefix of the parent directory of the given modelPath
+		return usedModelPaths.some((usedPath) => {
+			return modelPath.startsWith(usedPath) || usedPath.startsWith(modelPath)
+		})
+	}
+
+	if (filterUnused) {
+		fileTree = filterFileTree(fileTree, (item) => {
+			const isUsed = isUsedModelPath(item.absPath)
+			if (filterUnused && !isUsed) {
+				return false
+			}
+			return true
+		})
+	}
+
+	const fileCount = calculateFileCount(fileTree)
+
+	if (filterFiles) {
+		fileTree = filterFileTree(fileTree, (item) => {
+			return item.type === 'directory' || item.isModelLocation
+		})
+	}
 	return {
 		fileTree,
+		fileCount,
 	}
 }
