@@ -71,6 +71,33 @@ export interface NodeLlamaCppModelMeta {
 	gguf: GgufFileInfo
 }
 
+/**
+ * Configuration for a NodeLlamaCpp model, specifying file location, grammar rules, 
+ * device options, and other settings for model initialization and execution.
+ *
+ * @interface NodeLlamaCppModelConfig
+ * @extends ModelConfig
+ *
+ * @property {string} location - The file path to the model's GGUF file.
+ * @property {Record<string, TextCompletionGrammar>} [grammars] - Optional custom grammars for text completion tasks.
+ * @property {string|undefined} [sha256] - Optional SHA-256 checksum for model file validation.
+ * @property {TextCompletionParams} [completionDefaults] - Default parameters for text completion.
+ * @property {ChatMessage[]} [initialMessages] - Initial set of messages to seed a chat context.
+ * @property {string} [prefix] - Optional string prefix for input sequences.
+ * @property {Object} [tools] - Configuration for tools associated with the model.
+ * @property {Record<string, ToolDefinition>} tools.definitions - Definitions of tools available for use with the model.
+ * @property {boolean} [tools.includeToolDocumentation] - Whether to include documentation for tools.
+ * @property {number} [tools.parallelism] - Level of parallelism for tool execution.
+ * @property {number} [contextSize] - Maximum size of the model's context window.
+ * @property {number} [batchSize] - Number of inputs to process in a single batch.
+ * @property {LlamaContextOptions['lora']} [lora] - Optional LoRA (Low-Rank Adaptation) configuration for model fine-tuning.
+ * @property {LLamaChatContextShiftOptions['strategy']} [contextShiftStrategy] - Strategy for managing context shifts in chats.
+ * @property {Object} [device] - Device configuration for running the model.
+ * @property {boolean | 'auto' | (string & {})} [device.gpu] - Whether to use GPU, and if so, which GPU. Can be `true`, `false`, `'auto'`, or a specific device string.
+ * @property {number} [device.gpuLayers] - Number of model layers to offload to the GPU.
+ * @property {number} [device.cpuThreads] - Number of CPU threads to allocate for computation.
+ * @property {boolean} [device.memLock] - Whether to lock model memory to prevent swapping.
+ */
 export interface NodeLlamaCppModelConfig extends ModelConfig {
 	location: string
 	grammars?: Record<string, TextCompletionGrammar>
