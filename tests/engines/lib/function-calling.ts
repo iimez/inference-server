@@ -1,7 +1,7 @@
 import { expect } from 'vitest'
 import { ModelServer } from '#package/server.js'
 import { ChatMessage, ToolDefinition } from '#package/types/index.js'
-import { createChatCompletion } from '../../util.js'
+import { createChatCompletion } from '../../util/completions.js'
 
 interface GetLocationWeatherParams {
 	location: string
@@ -92,6 +92,7 @@ export async function runParallelFunctionCallTest(modelServer: ModelServer) {
 		description: 'Generate a random integer in given range',
 		parameters: {
 			type: 'object',
+			required: ['min', 'max'],
 			properties: {
 				min: {
 					type: 'number',

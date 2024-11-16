@@ -1,6 +1,6 @@
 import { expect } from 'vitest'
 import { ModelServer } from '#package/server.js'
-import { createChatCompletion } from '../../util.js'
+import { createChatCompletion } from '../../util/completions.js'
 
 export async function runTokenBiasTest(modelServer: ModelServer) {
 	const unbiasedChat = await createChatCompletion(modelServer, {
