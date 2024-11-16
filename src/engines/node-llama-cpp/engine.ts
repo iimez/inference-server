@@ -458,7 +458,7 @@ export async function processChatCompletionTask(
 
 	const functionsOrGrammar = inputFunctions
 		? {
-				functions: inputFunctions,
+				functions: { ...inputFunctions },
 				documentFunctionParams: config.tools?.includeToolDocumentation ?? true,
 				maxParallelFunctionCalls: config.tools?.parallelism ?? 1,
 				onFunctionCall: (functionCall: LlamaChatResponseFunctionCall<any>) => {
@@ -535,12 +535,25 @@ export async function processChatCompletionTask(
 					if (!functionDef) {
 						throw new Error(`The model tried to call undefined function "${functionCall.functionName}"`)
 					}
-					const functionCallResult = await functionDef.handler!(functionCall.params)
+					let functionCallResult = await functionDef.handler!(functionCall.params)
 					log(LogLevels.debug, 'Function handler resolved', {
 						function: functionCall.functionName,
 						args: functionCall.params,
 						result: functionCallResult,
 					})
+					if (typeof functionCallResult !== 'string') {
+						if (functionsOrGrammar.functions && functionCallResult.preventFurtherCalls) {
+							// remove the function we just called from the list of available functions
+							functionsOrGrammar.functions = Object.fromEntries(
+								Object.entries(functionsOrGrammar.functions).filter(([key]) => key !== functionCall.functionName),
+							)
+							if (Object.keys(functionsOrGrammar.functions).length === 0) {
+								// @ts-ignore
+								functionsOrGrammar.functions = undefined
+							}
+							functionCallResult = functionCallResult.text
+						}
+					}
 					return {
 						functionDef,
 						functionCall,

@@ -16,11 +16,7 @@ export interface AssistantToolCall {
 	parameters?: Record<string, any>
 }
 
-export type ChatMessage =
-	| UserMessage
-	| SystemMessage
-	| AssistantMessage
-	| ToolCallResultMessage
+export type ChatMessage = UserMessage | SystemMessage | AssistantMessage | ToolCallResultMessage
 
 export interface MessageTextContentPart {
 	type: 'text'
@@ -32,9 +28,7 @@ export interface MessageImageContentPart {
 	image: Image
 }
 
-export type MessageContentPart =
-	| MessageTextContentPart
-	| MessageImageContentPart
+export type MessageContentPart = MessageTextContentPart | MessageImageContentPart
 
 export interface UserMessage {
 	role: 'user'
@@ -63,10 +57,17 @@ export interface ToolCallResultMessage {
 // export type ToolDefinitionParams<TParams = any> = JSONSchemaType<TParams>
 export type ToolDefinitionParams<TParams> = SomeJSONSchema
 
+export interface ToolCallResultObject {
+	text: string
+	preventFurtherCalls?: boolean
+}
+
+export type ToolCallResult = string | ToolCallResultObject
+
 export interface ToolDefinition<TParams extends Record<string, any> = any> {
 	description?: string
 	parameters?: ToolDefinitionParams<TParams>
-	handler?: (params: TParams) => Promise<string>
+	handler?: (params: TParams) => Promise<ToolCallResult>
 }
 
 export interface TextCompletionParams {
