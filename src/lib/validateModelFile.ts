@@ -1,8 +1,7 @@
-
-
 import fs from 'node:fs'
 import { calculateFileChecksum } from '#package/lib/calculateFileChecksum.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
+import { readGgufFileInfo } from 'node-llama-cpp'
 
 interface ValidatableModelConfig {
 	url?: string
@@ -12,14 +11,32 @@ interface ValidatableModelConfig {
 	md5?: string
 }
 
-export async function validateModelFile(config: ValidatableModelConfig): Promise<string | undefined> {
+interface ValidationResult {
+	error?: string
+	meta?: {
+		gguf?: any
+	}
+}
+
+export async function validateModelFile(
+	config: ValidatableModelConfig,
+	signal?: AbortSignal,
+): Promise<ValidationResult> {
 	const fileLocation = resolveModelFileLocation({
 		url: config.url,
 		filePath: config.location,
 		modelsCachePath: config.modelsCachePath,
 	})
 	if (!fs.existsSync(fileLocation)) {
-		return `Model file missing at ${fileLocation}`
+		return {
+			error: `Model file missing at ${fileLocation}`,
+		}
+	}
+	const stats = fs.statSync(fileLocation)
+	if (stats.size === 0) {
+		return {
+			error: `Model file at ${fileLocation} is empty`,
+		}
 	}
 	const hasChecksum = config.sha256 || config.md5
 	let validatedChecksum = false
@@ -50,7 +67,9 @@ export async function validateModelFile(config: ValidatableModelConfig): Promise
 			}
 		}
 		if (!validatedChecksum) {
-			return `Model file with incomplete download`
+			return {
+				error: `Model file with incomplete download`,
+			}
 		}
 	}
 
@@ -58,14 +77,38 @@ export async function validateModelFile(config: ValidatableModelConfig): Promise
 		if (config.sha256) {
 			const fileHash = await calculateFileChecksum(fileLocation, 'sha256')
 			if (fileHash !== config.sha256) {
-				return `File sha256 checksum mismatch: expected ${config.sha256} got ${fileHash} at ${fileLocation}`
+				return {
+					error: `File sha256 checksum mismatch: expected ${config.sha256} got ${fileHash} at ${fileLocation}`,
+				}
 			}
 		} else if (config.md5) {
 			const fileHash = await calculateFileChecksum(fileLocation, 'md5')
 			if (fileHash !== config.md5) {
-				return `File md5 checksum mismatch: expected ${config.md5} got ${fileHash} at ${fileLocation}`
+				return {
+					error: `File md5 checksum mismatch: expected ${config.md5} got ${fileHash} at ${fileLocation}`,
+				}
 			}
 		}
 	}
-	return undefined
+
+	if (config.location?.endsWith('.gguf')) {
+		try {
+			const ggufMeta = await readGgufFileInfo(config.location!, {
+				signal,
+				ignoreKeys: [
+					'gguf.tokenizer.ggml.merges',
+					'gguf.tokenizer.ggml.tokens',
+					'gguf.tokenizer.ggml.scores',
+					'gguf.tokenizer.ggml.token_type',
+				],
+			})
+			return { meta: { gguf: ggufMeta } }
+		} catch (err) {
+			return {
+				error: `Invalid GGUF: ${err}`,
+			}
+		}
+	}
+
+	return { meta: {} }
 }

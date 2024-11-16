@@ -142,15 +142,15 @@ export async function prepareModel(
 			return
 		}
 
-		const validationError = await validateModelFile(config)
+		const { error, meta } = await validateModelFile(config)
 		if (signal?.aborted) {
 			return
 		}
-		if (validationError) {
+		if (error) {
 			if (config.url) {
-				await downloadModel(config.url, validationError)
+				await downloadModel(config.url, error)
 			} else {
-				throw new Error(`${validationError} - No URL provided`)
+				throw new Error(`${error} - No URL provided`)
 			}
 		}
 
@@ -158,18 +158,8 @@ export async function prepareModel(
 		if (finalValidationError) {
 			throw new Error(`Downloaded files are invalid: ${finalValidationError}`)
 		}
-		const gguf = await readGgufFileInfo(config.location, {
-			signal,
-			ignoreKeys: [
-				'gguf.tokenizer.ggml.merges',
-				'gguf.tokenizer.ggml.tokens',
-				'gguf.tokenizer.ggml.scores',
-				'gguf.tokenizer.ggml.token_type',
-			],
-		})
-		return {
-			gguf,
-		}
+
+		return meta
 	} catch (err) {
 		throw err
 	} finally {
