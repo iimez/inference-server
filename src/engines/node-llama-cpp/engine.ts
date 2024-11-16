@@ -142,24 +142,24 @@ export async function prepareModel(
 			return
 		}
 
-		const { error, meta } = await validateModelFile(config)
+		const validationRes = await validateModelFile(config)
+		let modelMeta = validationRes.meta
 		if (signal?.aborted) {
 			return
 		}
-		if (error) {
-			if (config.url) {
-				await downloadModel(config.url, error)
-			} else {
-				throw new Error(`${error} - No URL provided`)
+		if (validationRes.error) {
+			if (!config.url) {
+				throw new Error(`${validationRes.error} - No URL provided`)
 			}
+			await downloadModel(config.url, validationRes.error)
+			const revalidationRes = await validateModelFile(config)
+			if (revalidationRes.error) {
+				throw new Error(`Downloaded files are invalid: ${revalidationRes.error}`)
+			}
+			modelMeta = revalidationRes.meta
 		}
 
-		const finalValidationError = await validateModelFile(config)
-		if (finalValidationError) {
-			throw new Error(`Downloaded files are invalid: ${finalValidationError}`)
-		}
-
-		return meta
+		return modelMeta
 	} catch (err) {
 		throw err
 	} finally {
@@ -464,10 +464,10 @@ export async function processChatCompletionTask(
 				onFunctionCall: (functionCall: LlamaChatResponseFunctionCall<any>) => {
 					// log(LogLevels.debug, 'Called function', functionCall)
 				},
-		  }
+			}
 		: {
 				grammar: inputGrammar,
-		  }
+			}
 
 	const initialTokenMeterState = instance.chat.sequence.tokenMeter.getState()
 	let completionResult: LlamaChatResult
