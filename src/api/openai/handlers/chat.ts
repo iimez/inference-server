@@ -193,7 +193,7 @@ export function createChatCompletionHandler(modelServer: ModelServer) {
 				}
 			}
 
-			let completionTools:
+			let toolDefinitions:
 				| Record<string, ToolDefinition>
 				| undefined
 
@@ -208,11 +208,11 @@ export function createChatCompletionHandler(modelServer: ModelServer) {
 						}
 					})
 				if (functionTools.length) {
-					if (!completionTools) {
-						completionTools = {}
+					if (!toolDefinitions) {
+						toolDefinitions = {}
 					}
 					for (const tool of functionTools) {
-						completionTools[tool.name] = {
+						toolDefinitions[tool.name] = {
 							description: tool.description,
 							parameters: tool.parameters,
 						} as ToolDefinition
@@ -238,7 +238,7 @@ export function createChatCompletionHandler(modelServer: ModelServer) {
 				topP: args.top_p ? args.top_p : undefined,
 				tokenBias: args.logit_bias ? args.logit_bias : undefined,
 				grammar: completionGrammar,
-				tools: completionTools,
+				tools: toolDefinitions ? { definitions: toolDefinitions } : undefined,
 				// additional non-spec params
 				repeatPenaltyNum: args.repeat_penalty_num
 					? args.repeat_penalty_num

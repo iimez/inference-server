@@ -114,8 +114,8 @@ interface LlamaCppModelOptionsBase extends BuiltInModelOptionsBase {
 	contextShiftStrategy?: ContextShiftStrategy
 	tools?: {
 		definitions: Record<string, ToolDefinition>
-		includeParamsDocumentation?: boolean
-		parallelism?: number
+		documentParams?: boolean
+		maxParallelCalls?: number
 	}
 	device?: {
 		gpu?: boolean | 'auto' | (string & {})

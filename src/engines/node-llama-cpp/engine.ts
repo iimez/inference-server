@@ -79,9 +79,9 @@ export interface NodeLlamaCppModelConfig extends ModelConfig {
 	initialMessages?: ChatMessage[]
 	prefix?: string
 	tools?: {
-		definitions: Record<string, ToolDefinition>
-		includeToolDocumentation?: boolean
-		parallelism?: number
+		definitions?: Record<string, ToolDefinition>
+		documentParams?: boolean
+		maxParallelCalls?: number
 	}
 	contextSize?: number
 	batchSize?: number
@@ -259,7 +259,7 @@ export async function createInstance({ config, log }: EngineContext<NodeLlamaCpp
 		const loadMessagesRes = await chat.loadChatAndCompleteUserMessage(initialChatHistory, {
 			initialUserPrompt: '',
 			functions: inputFunctions,
-			documentFunctionParams: config.tools?.includeToolDocumentation,
+			documentFunctionParams: config.tools?.documentParams,
 		})
 
 		instance.chat = chat
@@ -302,7 +302,7 @@ export async function processChatCompletionTask(
 		})
 		// if context reset is requested, dispose the chat instance
 		if (instance.chat) {
-			await instance.chat.dispose()
+			instance.chat.dispose()
 		}
 		let contextSequence = instance.contextSequence
 		if (!contextSequence || contextSequence.disposed) {
@@ -354,12 +354,13 @@ export async function processChatCompletionTask(
 	// setting up available function definitions
 	const functionDefinitions: Record<string, ToolDefinition> = {
 		...config.tools?.definitions,
-		...request.tools,
+		...request.tools?.definitions,
 	}
 
 	// see if the user submitted any function call results
+	const maxParallelCalls = config.tools?.maxParallelCalls ?? request.tools?.maxParallelCalls
 	const supportsParallelFunctionCalling =
-		instance.chat.chatWrapper.settings.functions.parallelism != null && !!config.tools?.parallelism
+		instance.chat.chatWrapper.settings.functions.parallelism != null || !!maxParallelCalls 
 	const resolvedFunctionCalls = []
 	const functionCallResultMessages = request.messages.filter((m) => m.role === 'tool') as ToolCallResultMessage[]
 	for (const message of functionCallResultMessages) {
@@ -458,9 +459,9 @@ export async function processChatCompletionTask(
 
 	const functionsOrGrammar = inputFunctions
 		? {
-				functions: { ...inputFunctions },
-				documentFunctionParams: config.tools?.includeToolDocumentation ?? true,
-				maxParallelFunctionCalls: config.tools?.parallelism ?? 1,
+				functions: { ...inputFunctions }, // clone the dict because it gets mutated below
+				documentFunctionParams: config.tools?.documentParams ?? request.tools?.documentParams,
+				maxParallelFunctionCalls: maxParallelCalls,
 				onFunctionCall: (functionCall: LlamaChatResponseFunctionCall<any>) => {
 					// log(LogLevels.debug, 'Called function', functionCall)
 				},

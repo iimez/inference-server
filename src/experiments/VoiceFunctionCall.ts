@@ -52,7 +52,7 @@ export class VoiceFunctionCallEngine
 		])
 		const chatTask = chatModel.instance.processChatCompletionTask({
 			model: this.chatModel,
-			tools: this.tools,
+			tools: this.tools ? { definitions: this.tools } : undefined,
 			messages: [
 				{
 					role: 'user',
