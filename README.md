@@ -140,6 +140,8 @@ Not in any particular order:
 - [x] Implement more transformer.js tasks
 - [x] [CLI](https://github.com/iimez/inference-server/discussions/7)
 - [ ] Add some light jsdoc for server/pool/store methods
+- [ ] Should support adding a json schema grammar on completion requests (not just a grammar name)
+- [ ] Find a good way to allow use of custom chat wrappers with node-llama-cpp
 - [ ] utilize node-llama-cpp's support to reuse LlamaModel weights with multiple contexts (across instances)
 - [ ] Support transformer.js for text-completion tasks ([not yet supported in Node.js](https://github.com/huggingface/transformers.js/blob/e129c47c65a049173f35e6263fd8d9f660dfc1a7/src/models.js#L240-L242))
 - [ ] Infill completion support https://github.com/withcatai/node-llama-cpp/blob/beta/src/evaluator/LlamaCompletion.ts#L322-L336

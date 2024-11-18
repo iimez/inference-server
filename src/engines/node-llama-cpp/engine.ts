@@ -360,7 +360,7 @@ export async function processChatCompletionTask(
 	// see if the user submitted any function call results
 	const maxParallelCalls = config.tools?.maxParallelCalls ?? request.tools?.maxParallelCalls
 	const supportsParallelFunctionCalling =
-		instance.chat.chatWrapper.settings.functions.parallelism != null || !!maxParallelCalls 
+		instance.chat.chatWrapper.settings.functions.parallelism != null || !!maxParallelCalls
 	const resolvedFunctionCalls = []
 	const functionCallResultMessages = request.messages.filter((m) => m.role === 'tool') as ToolCallResultMessage[]
 	for (const message of functionCallResultMessages) {
@@ -465,10 +465,10 @@ export async function processChatCompletionTask(
 				onFunctionCall: (functionCall: LlamaChatResponseFunctionCall<any>) => {
 					// log(LogLevels.debug, 'Called function', functionCall)
 				},
-			}
+		  }
 		: {
 				grammar: inputGrammar,
-			}
+		  }
 
 	const initialTokenMeterState = instance.chat.sequence.tokenMeter.getState()
 	let completionResult: LlamaChatResult
