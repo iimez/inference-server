@@ -106,23 +106,111 @@ interface TextCompletionModelOptions {
 	batchSize?: number
 }
 
+/**
+ * Configuration options for Node.js Llama.cpp model implementations.
+ * @interface
+ * @extends {BuiltInModelOptionsBase}
+ */
 interface LlamaCppModelOptionsBase extends BuiltInModelOptionsBase {
-	engine: 'node-llama-cpp'
-	task: 'text-completion' | 'embedding'
-	sha256?: string
-	batchSize?: number
-	contextShiftStrategy?: ContextShiftStrategy
-	tools?: {
-		definitions: Record<string, ToolDefinition>
-		includeParamsDocumentation?: boolean
-		parallelism?: number
-	}
-	device?: {
-		gpu?: boolean | 'auto' | (string & {})
-		gpuLayers?: number
-		cpuThreads?: number
-		memLock?: boolean
-	}
+    engine: 'node-llama-cpp';
+
+    /**
+     * Defines the type of task the model will perform.
+     * @type {'text-completion' | 'embedding'}
+     */
+    task: 'text-completion' | 'embedding';
+
+    /**
+     * Optional SHA-256 hash of the model file.
+     * Can be used for model verification.
+     * @type {string}
+     * @optional
+     */
+    sha256?: string;
+
+    /**
+     * Optional batch size for processing.
+     * Controls how many tokens are processed simultaneously.
+     * @type {number}
+     * @optional
+     */
+    batchSize?: number;
+
+    /**
+     * Optional strategy for handling context window shifts.
+     * Determines how the model manages context when it exceeds the maximum length.
+     * @type {ContextShiftStrategy}
+     * @optional
+     */
+    contextShiftStrategy?: ContextShiftStrategy;
+
+    /**
+     * Configuration for model tools and their execution.
+     * @type {object}
+     * @optional
+     */
+    tools?: {
+        /**
+         * Dictionary of tool definitions where keys are tool names and values are their definitions.
+         * @type {Record<string, ToolDefinition>}
+         */
+        definitions: Record<string, ToolDefinition>;
+
+        /**
+         * Whether to include parameter documentation in tool definitions.
+         * @type {boolean}
+         * @optional
+         */
+        includeParamsDocumentation?: boolean;
+
+        /**
+         * Number of parallel tool executions allowed.
+         * @type {number}
+         * @optional
+         */
+        parallelism?: number;
+    };
+
+    /**
+     * Device configuration for model execution.
+     * @type {object}
+     * @optional
+     */
+    device?: {
+        /**
+         * GPU usage configuration.
+         * - true: Use GPU
+         * - false: Don't use GPU
+         * - 'auto': Automatically detect and use GPU if available
+         * - string: Specific GPU device identifier
+         * @type {boolean | 'auto' | (string & {})}
+         * @optional
+         */
+        gpu?: boolean | 'auto' | (string & {});
+
+        /**
+         * Number of layers to offload to GPU.
+         * Only applicable when GPU is enabled.
+         * @type {number}
+         * @optional
+         */
+        gpuLayers?: number;
+
+        /**
+         * Number of CPU threads to use for computation.
+         * @type {number}
+         * @optional
+         */
+        cpuThreads?: number;
+
+        /**
+         * Whether to lock memory to prevent swapping.
+         * Can improve performance but requires appropriate system permissions.
+         * @type {boolean}
+         * @optional
+         */
+        memLock?: boolean;
+    };
 }
 
 interface LlamaCppEmbeddingModelOptions extends LlamaCppModelOptionsBase, EmbeddingModelOptions {
