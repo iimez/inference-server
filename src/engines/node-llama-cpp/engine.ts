@@ -106,9 +106,9 @@ export interface NodeLlamaCppModelConfig extends ModelConfig {
 	initialMessages?: ChatMessage[]
 	prefix?: string
 	tools?: {
-		definitions: Record<string, ToolDefinition>
-		includeToolDocumentation?: boolean
-		parallelism?: number
+		definitions?: Record<string, ToolDefinition>
+		documentParams?: boolean
+		maxParallelCalls?: number
 	}
 	contextSize?: number
 	batchSize?: number
@@ -169,34 +169,24 @@ export async function prepareModel(
 			return
 		}
 
-		const validationError = await validateModelFile(config)
+		const validationRes = await validateModelFile(config)
+		let modelMeta = validationRes.meta
 		if (signal?.aborted) {
 			return
 		}
-		if (validationError) {
-			if (config.url) {
-				await downloadModel(config.url, validationError)
-			} else {
-				throw new Error(`${validationError} - No URL provided`)
+		if (validationRes.error) {
+			if (!config.url) {
+				throw new Error(`${validationRes.error} - No URL provided`)
 			}
+			await downloadModel(config.url, validationRes.error)
+			const revalidationRes = await validateModelFile(config)
+			if (revalidationRes.error) {
+				throw new Error(`Downloaded files are invalid: ${revalidationRes.error}`)
+			}
+			modelMeta = revalidationRes.meta
 		}
 
-		const finalValidationError = await validateModelFile(config)
-		if (finalValidationError) {
-			throw new Error(`Downloaded files are invalid: ${finalValidationError}`)
-		}
-		const gguf = await readGgufFileInfo(config.location, {
-			signal,
-			ignoreKeys: [
-				'gguf.tokenizer.ggml.merges',
-				'gguf.tokenizer.ggml.tokens',
-				'gguf.tokenizer.ggml.scores',
-				'gguf.tokenizer.ggml.token_type',
-			],
-		})
-		return {
-			gguf,
-		}
+		return modelMeta
 	} catch (err) {
 		throw err
 	} finally {
@@ -296,7 +286,7 @@ export async function createInstance({ config, log }: EngineContext<NodeLlamaCpp
 		const loadMessagesRes = await chat.loadChatAndCompleteUserMessage(initialChatHistory, {
 			initialUserPrompt: '',
 			functions: inputFunctions,
-			documentFunctionParams: config.tools?.includeToolDocumentation,
+			documentFunctionParams: config.tools?.documentParams,
 		})
 
 		instance.chat = chat
@@ -339,7 +329,7 @@ export async function processChatCompletionTask(
 		})
 		// if context reset is requested, dispose the chat instance
 		if (instance.chat) {
-			await instance.chat.dispose()
+			instance.chat.dispose()
 		}
 		let contextSequence = instance.contextSequence
 		if (!contextSequence || contextSequence.disposed) {
@@ -391,12 +381,13 @@ export async function processChatCompletionTask(
 	// setting up available function definitions
 	const functionDefinitions: Record<string, ToolDefinition> = {
 		...config.tools?.definitions,
-		...request.tools,
+		...request.tools?.definitions,
 	}
 
 	// see if the user submitted any function call results
+	const maxParallelCalls = config.tools?.maxParallelCalls ?? request.tools?.maxParallelCalls
 	const supportsParallelFunctionCalling =
-		instance.chat.chatWrapper.settings.functions.parallelism != null && !!config.tools?.parallelism
+		instance.chat.chatWrapper.settings.functions.parallelism != null || !!maxParallelCalls
 	const resolvedFunctionCalls = []
 	const functionCallResultMessages = request.messages.filter((m) => m.role === 'tool') as ToolCallResultMessage[]
 	for (const message of functionCallResultMessages) {
@@ -495,9 +486,9 @@ export async function processChatCompletionTask(
 
 	const functionsOrGrammar = inputFunctions
 		? {
-				functions: inputFunctions,
-				documentFunctionParams: config.tools?.includeToolDocumentation ?? true,
-				maxParallelFunctionCalls: config.tools?.parallelism ?? 1,
+				functions: { ...inputFunctions }, // clone the dict because it gets mutated below
+				documentFunctionParams: config.tools?.documentParams ?? request.tools?.documentParams,
+				maxParallelFunctionCalls: maxParallelCalls,
 				onFunctionCall: (functionCall: LlamaChatResponseFunctionCall<any>) => {
 					// log(LogLevels.debug, 'Called function', functionCall)
 				},
@@ -572,12 +563,25 @@ export async function processChatCompletionTask(
 					if (!functionDef) {
 						throw new Error(`The model tried to call undefined function "${functionCall.functionName}"`)
 					}
-					const functionCallResult = await functionDef.handler!(functionCall.params)
+					let functionCallResult = await functionDef.handler!(functionCall.params)
 					log(LogLevels.debug, 'Function handler resolved', {
 						function: functionCall.functionName,
 						args: functionCall.params,
 						result: functionCallResult,
 					})
+					if (typeof functionCallResult !== 'string') {
+						if (functionsOrGrammar.functions && functionCallResult.preventFurtherCalls) {
+							// remove the function we just called from the list of available functions
+							functionsOrGrammar.functions = Object.fromEntries(
+								Object.entries(functionsOrGrammar.functions).filter(([key]) => key !== functionCall.functionName),
+							)
+							if (Object.keys(functionsOrGrammar.functions).length === 0) {
+								// @ts-ignore
+								functionsOrGrammar.functions = undefined
+							}
+							functionCallResult = functionCallResult.text
+						}
+					}
 					return {
 						functionDef,
 						functionCall,

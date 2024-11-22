@@ -1,6 +1,6 @@
 import { expect } from 'vitest'
 import { ModelServer } from '#package/server.js'
-import { createChatCompletion } from '../../util.js'
+import { createChatCompletion } from '../../util/completions.js'
 
 export async function runSystemMessageTest(modelServer: ModelServer) {
 	const chat = await createChatCompletion(modelServer, {

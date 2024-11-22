@@ -1,6 +1,6 @@
 import { expect } from 'vitest'
 import { ModelServer } from '#package/server.js'
-import { createChatCompletion } from '../../util.js'
+import { createChatCompletion } from '../../util/completions.js'
 import { ChatMessage } from '#package/types/index.js'
 
 export async function runBuiltInGrammarTest(modelServer: ModelServer) {

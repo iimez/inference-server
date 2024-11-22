@@ -1,7 +1,7 @@
 import { expect } from 'vitest'
 import { ModelServer } from '#package/server.js'
 import { ChatMessage } from '#package/types/index.js'
-import { createChatCompletion, parseInstanceId } from '../../util.js'
+import { createChatCompletion, parseInstanceId } from '../../util/completions.js'
 
 // conversation that tests whether reused instances leak their context
 export async function runContextLeakTest(

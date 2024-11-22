@@ -112,6 +112,11 @@ interface TextCompletionModelOptions {
  * @extends {BuiltInModelOptionsBase}
  */
 interface LlamaCppModelOptionsBase extends BuiltInModelOptionsBase {
+    /**
+     * Specifies the engine to be used for model execution.
+     * Must be set to 'node-llama-cpp'.
+     * @type {'node-llama-cpp'}
+     */
     engine: 'node-llama-cpp';
 
     /**
@@ -161,14 +166,14 @@ interface LlamaCppModelOptionsBase extends BuiltInModelOptionsBase {
          * @type {boolean}
          * @optional
          */
-        includeParamsDocumentation?: boolean;
+        documentParams?: boolean;
 
         /**
-         * Number of parallel tool executions allowed.
+         * Maximum number of parallel tool executions allowed.
          * @type {number}
          * @optional
          */
-        parallelism?: number;
+        maxParallelCalls?: number;
     };
 
     /**

@@ -29,13 +29,58 @@ import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.
 import { validateModelOptions } from '#package/lib/validateModelOptions.js'
 import { getCacheDirPath } from '#package/lib/getCacheDirPath.js'
 
+/**
+ * Configuration options for initializing a `ModelServer`.
+ * The example provided starts a model server using gpt4all as the engine, with the task of text-completion.
+ * @interface ModelServerOptions
+ * @example 
+ * const modelServer = await startModelServer({
+ *	log: 'info',
+ * 	concurrency: 2,
+ *	models: {
+ *		'phi3-mini-4k': {
+ *			task: 'text-completion',
+ *      		url: 'https://gpt4all.io/models/gguf/Phi-3-mini-4k-instruct.Q4_0.gguf',
+ *			engine: 'gpt4all',
+ *			maxInstances: 2,
+ *		},
+ *	},
+ * })
+ */
 export interface ModelServerOptions {
-	engines?: Record<string, ModelEngine>
-	models: Record<string, ModelOptions>
-	concurrency?: number
-	cachePath?: string
-	log?: Logger | LogLevel
+	/**
+	 * A record of custom engines to be used for processing tasks. Each engine is identified by a unique name.
+	 * @type {Record<string, ModelEngine>}
+	 * @optional
+	 */
+	engines?: Record<string, ModelEngine>;
+
+	/**
+	 * A record of model configurations, where each model is identified by a unique ID, defined by the user.
+	 * @type {Record<string, ModelOptions>}
+	 */
+	models: Record<string, ModelOptions>;
+	/**
+	 * The maximum number of concurrent tasks allowed in the model pool.
+	 * @type {number}
+	 * @optional
+	 */
+	concurrency?: number;
+	/**
+	 * The path to the cache directory where model files and related data will be stored.
+	 * @type {string}
+	 * @optional
+	 */
+	cachePath?: string;
+	/**
+	 * A logger instance or log level to control logging for the server. If a log level is provided,
+	 * a default logger will be created with that level.
+	 * @type {Logger | LogLevel}
+	 * @optional
+	 */
+	log?: Logger | LogLevel;
 }
+
 
 export function startModelServer(options: ModelServerOptions) {
 	const server = new ModelServer(options)
@@ -43,12 +88,29 @@ export function startModelServer(options: ModelServerOptions) {
 	return server
 }
 
+/**
+ * Represents a server for managing and serving machine learning models, including model initialization,
+ * request handling, and task processing.
+ *
+ * @class ModelServer
+ */
 export class ModelServer {
+	/** @property {ModelPool} pool - A pool for managing model instances and concurrency. */
 	pool: ModelPool
+
+	/** @property {ModelStore} store - A store for managing model metadata, preparation, and storage. */
 	store: ModelStore
+
+	/** @property {Record<string, ModelEngine>} engines - A record of engines (custom and built-in) used for processing tasks. */
 	engines: Record<string, ModelEngine> = {}
+
+	/** @property {Logger} log - Logger for tracking the server's activities and errors. */
 	log: Logger
 
+	/**
+	 * Constructs a `ModelServer` instance with the specified options.
+	 * @param {ModelServerOptions} options - Configuration options for the server.
+	 */
 	constructor(options: ModelServerOptions) {
 		this.log = createSublogger(options.log)
 		let modelsCachePath = getCacheDirPath('models')
@@ -125,7 +187,11 @@ export class ModelServer {
 	modelExists(modelId: string) {
 		return !!this.pool.config.models[modelId]
 	}
-
+	/**
+	 * Starts the model server, initializing engines and preparing the model store and pool.
+	 * Usually you would not need to call this method. startModelServer() will do this for you.
+	 * @returns {Promise<void>} Resolves when the server is fully started.
+	 */
 	async start() {
 		const engineStartPromises = []
 		// call startEngine on custom engines
@@ -161,7 +227,9 @@ export class ModelServer {
 		await Promise.all(engineStartPromises)
 		await Promise.all([this.store.init(this.engines), this.pool.init(this.engines)])
 	}
-
+	/**
+ 	 * Stops the server. disposes all resources. Clears the queue of working tasks.
+ 	 **/
 	async stop() {
 		this.log(LogLevels.info, 'Stopping model server')
 		this.pool.queue.clear()
@@ -176,7 +244,14 @@ export class ModelServer {
 
 		this.log(LogLevels.debug, 'Model server stopped')
 	}
-
+	/**
+	 * Requests an available model instance from the pool for a specific task.
+	 * There is not much need to call this method unless you are creating a custom task pipeline.
+  	 * This method is called internally by the processXTask methods.
+	 * @param {InferenceRequest} request - The inference request details.
+	 * @param {AbortSignal} [signal] - Optional signal to cancel the request.
+	 * @returns {Promise<ModelInstance>} The requested model instance.
+	 */
 	async requestInstance(request: InferenceRequest, signal?: AbortSignal) {
 		return this.pool.requestInstance(request, signal)
 	}
@@ -213,7 +288,7 @@ export class ModelServer {
 		await lock.release()
 		return result
 	}
-
+	
 	async processTextCompletionTask(args: TextCompletionRequest, options?: CompletionProcessingOptions) {
 		const lock = await this.requestInstance(args)
 		const task = lock.instance.processTextCompletionTask(args, options)
@@ -221,7 +296,7 @@ export class ModelServer {
 		await lock.release()
 		return result
 	}
-
+	
 	async processEmbeddingTask(args: EmbeddingRequest, options?: ProcessingOptions) {
 		const lock = await this.requestInstance(args)
 		const task = lock.instance.processEmbeddingTask(args, options)
@@ -229,7 +304,7 @@ export class ModelServer {
 		await lock.release()
 		return result
 	}
-
+	
 	async processImageToTextTask(args: ImageToTextRequest, options?: ProcessingOptions) {
 		const lock = await this.requestInstance(args)
 		const task = lock.instance.processImageToTextTask(args, options)
@@ -261,7 +336,6 @@ export class ModelServer {
 		await lock.release()
 		return result
 	}
-
 	async processImageToImageTask(args: ImageToImageRequest, options?: ProcessingOptions) {
 		const lock = await this.requestInstance(args)
 		const task = lock.instance.processImageToImageTask(args, options)
@@ -269,7 +343,7 @@ export class ModelServer {
 		await lock.release()
 		return result
 	}
-	
+
 	async processObjectRecognitionTask(args: ObjectRecognitionRequest, options?: ProcessingOptions) {
 		const lock = await this.requestInstance(args)
 		const task = lock.instance.processObjectRecognitionTask(args, options)
@@ -278,6 +352,11 @@ export class ModelServer {
 		return result
 	}
 
+	/**
+	 * Retrieves the current status of the model server, including pool and store status.
+	 *
+	 * @returns {Object} The status object containing pool and store information.
+	 */
 	getStatus() {
 		const poolStatus = this.pool.getStatus()
 		const storeStatus = this.store.getStatus()

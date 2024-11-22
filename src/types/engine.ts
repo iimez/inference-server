@@ -33,7 +33,11 @@ export interface CompletionChunk {
 export interface ChatCompletionRequest extends TextCompletionRequestBase {
 	messages: ChatMessage[]
 	grammar?: string
-	tools?: Record<string, ToolDefinition>
+	tools?: {
+		definitions: Record<string, ToolDefinition>
+		documentParams?: boolean
+		maxParallelCalls?: number
+	}
 }
 
 export interface TextEmbeddingInput {

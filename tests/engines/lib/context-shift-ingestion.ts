@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import { expect } from 'vitest'
 import { ModelServer } from '#package/server.js'
 import { ChatMessage } from '#package/types/index.js'
-import { createChatCompletion } from '../../util.js'
+import { createChatCompletion } from '../../util/completions.js'
 
 // conversation that tests behavior when context window is exceeded while model is ingesting text
 export async function runIngestionContextShiftTest(

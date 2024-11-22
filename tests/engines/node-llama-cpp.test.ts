@@ -1,10 +1,7 @@
 import { suite, test, expect, beforeAll, afterAll } from 'vitest'
 import fs from 'node:fs'
 import { ModelServer } from '#package/server.js'
-import {
-	ChatMessage,
-	ModelOptions,
-} from '#package/types/index.js'
+import { ChatMessage, ModelOptions } from '#package/types/index.js'
 import {
 	runStopTriggerTest,
 	runTokenBiasTest,
@@ -33,10 +30,7 @@ const testModel: ModelOptions = {
 	contextSize: 2048,
 	prepare: 'blocking',
 	grammars: {
-		'custom-gbnf-string': fs.readFileSync(
-			'tests/fixtures/grammar/name-age-json.gbnf',
-			'utf-8',
-		),
+		'custom-gbnf-string': fs.readFileSync('tests/fixtures/grammar/name-age-json.gbnf', 'utf-8'),
 		'custom-json-schema': {
 			type: 'object',
 			properties: {
@@ -90,8 +84,7 @@ suite('function calling', async () => {
 				task: 'text-completion',
 				engine: 'node-llama-cpp',
 				url: 'https://huggingface.co/meetkai/functionary-small-v3.2-GGUF/blob/main/functionary-small-v3.2.Q4_0.gguf',
-				sha256:
-					'c0afdbbffa498a8490dea3401e34034ac0f2c6e337646513a7dbc04fcef1c3a4',
+				sha256: 'c0afdbbffa498a8490dea3401e34034ac0f2c6e337646513a7dbc04fcef1c3a4',
 				// url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/blob/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
 				// sha256: '6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff',
 				// tools: {
@@ -254,9 +247,7 @@ suite('preload', () => {
 				},
 			],
 		})
-		expect(chat.result.contextTokens).toBe(
-			chat.result.promptTokens + chat.result.completionTokens,
-		)
+		expect(chat.result.contextTokens).toBe(chat.result.promptTokens + chat.result.completionTokens)
 	})
 
 	test('assistant response prefill', async () => {
@@ -274,13 +265,12 @@ suite('preload', () => {
 				{
 					role: 'assistant',
 					content: 'Certainly not',
-				}
+				},
 			],
 		})
 		expect(chat.result.message.content).toMatch(/^Certainly not/)
 	})
 })
-
 
 suite('prefix', () => {
 	const prefix = 'The Secret is "koalabear"! I continuously remind myself -'

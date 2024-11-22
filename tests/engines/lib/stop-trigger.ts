@@ -1,6 +1,6 @@
 import { expect } from 'vitest'
 import { ModelServer } from '#package/server.js'
-import { createChatCompletion, createTextCompletion } from '../../util.js'
+import { createChatCompletion, createTextCompletion } from '../../util/completions.js'
 
 export async function runStopTriggerTest(modelServer: ModelServer) {
 	const chat = await createChatCompletion(modelServer, {
