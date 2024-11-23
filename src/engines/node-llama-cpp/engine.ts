@@ -71,6 +71,7 @@ export interface NodeLlamaCppModelMeta {
 	gguf: GgufFileInfo
 }
 
+
 export interface NodeLlamaCppModelConfig extends ModelConfig {
 	location: string
 	grammars?: Record<string, TextCompletionGrammar>
