@@ -5,13 +5,13 @@ import { flattenMessageTextContent } from './flattenMessageTextContent.js'
 export interface CalculateContextIdentityOptions {
 	messages?: ChatMessage[]
 	text?: string
-	dropLastMessage?: boolean
+	dropLastUserMessage?: boolean
 }
 
 export function calculateContextIdentity({
 	messages,
 	text,
-	dropLastMessage = false,
+	dropLastUserMessage = false,
 }: CalculateContextIdentityOptions): string {
 
 	if (text) {
@@ -30,11 +30,10 @@ export function calculateContextIdentity({
 			const textContent = flattenMessageTextContent(message.content)
 			return !!textContent
 		})
-		if (dropLastMessage && filteredMessages.length > 1) {
-			if (filteredMessages[filteredMessages.length - 1].role !== 'user') {
-				console.warn('Dropping last message that is not a user message. This should not happen.')
+		if (dropLastUserMessage && filteredMessages.length > 1) {
+			if (filteredMessages[filteredMessages.length - 1].role === 'user') {
+				filteredMessages.pop()
 			}
-			filteredMessages.pop()
 		}
 		// we dont wanna json stringify because this would make message key order significant
 		const serializedMessages = filteredMessages

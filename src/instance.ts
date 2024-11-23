@@ -176,7 +176,7 @@ export class ModelInstance<TEngineRef = unknown> {
 		if ('messages' in request && request.messages?.length) {
 			incomingContextIdentity = calculateContextIdentity({
 				messages: request.messages,
-				dropLastMessage: true,
+				dropLastUserMessage: true,
 			})
 		} else if ('prompt' in request && request.prompt) {
 			incomingContextIdentity = calculateContextIdentity({
