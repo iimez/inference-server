@@ -1,11 +1,9 @@
-import fs from 'node:fs/promises'
+import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import url from 'node:url'
-import { ModelServerOptions } from '#package/server.js'
+import type { ModelServerOptions } from '#package/server.js'
 
-export async function loadConfig(
-	customPath?: string,
-): Promise<{ path: string; options: ModelServerOptions } | null> {
+export async function loadConfig(customPath?: string): Promise<{ path: string; options: ModelServerOptions } | null> {
 	// If custom path provided, try only that
 	if (customPath) {
 		try {
@@ -42,8 +40,6 @@ export async function loadConfig(
 			continue
 		}
 	}
-	
-
 
 	return null
 }

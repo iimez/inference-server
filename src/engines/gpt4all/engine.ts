@@ -74,10 +74,11 @@ export async function prepareModel(
 	log(LogLevels.info, `Preparing gpt4all model at ${config.location}`, {
 		model: config.id,
 	})
-	let modelMeta: GPT4AllModelMeta | undefined
+	let gpt4allMeta: GPT4AllModelMeta | undefined
 	let modelList: GPT4AllModelMeta[]
 	const modelMetaPath = path.join(path.dirname(config.location), 'models.json')
 	try {
+
 		if (!fs.existsSync(modelMetaPath)) {
 			const res = await fetch(DEFAULT_MODEL_LIST_URL)
 			modelList = (await res.json()) as GPT4AllModelMeta[]
@@ -95,23 +96,26 @@ export async function prepareModel(
 			return item.filename === path.basename(config.location)
 		})
 		if (foundModelMeta) {
-			modelMeta = foundModelMeta
+			gpt4allMeta = foundModelMeta
 		}
 
-		const validationError = await validateModelFile({
+		const validationRes = await validateModelFile({
 			...config,
-			md5: config.md5 || modelMeta?.md5sum,
+			md5: config.md5 || gpt4allMeta?.md5sum,
 		})
+		let modelMeta = validationRes.meta
 		if (signal?.aborted) {
 			return
 		}
-		if (validationError) {
-			if (config.url) {
+		if (validationRes.error) {
+			if (!config.url) {
+				throw new Error(`${validationRes.error} - No URL provided`)
+			}
 				log(LogLevels.info, 'Downloading', {
 					model: config.id,
 					url: config.url,
 					location: config.location,
-					error: validationError,
+					error: validationRes.error,
 				})
 				await downloadModelFile({
 					url: config.url,
@@ -120,23 +124,24 @@ export async function prepareModel(
 					onProgress,
 					signal,
 				})
-			} else {
-				throw new Error(`${validationError} - No URL provided`)
-			}
+				const revalidationRes = await validateModelFile({
+					...config,
+					md5: config.md5 || gpt4allMeta?.md5sum,
+				})
+				if (revalidationRes.error) {
+					throw new Error(`Downloaded files are invalid: ${revalidationRes.error}`)
+				}
+				modelMeta = revalidationRes.meta
 		}
 
-		const finalValidationError = await validateModelFile({
-			...config,
-			md5: config.md5 || modelMeta?.md5sum,
-		})
-		if (finalValidationError) {
-			throw new Error(`Downloaded files are invalid: ${finalValidationError}`)
-		}
 		if (signal?.aborted) {
 			return
 		}
 
-		return modelMeta
+		return {
+			gpt4allMeta,
+			...modelMeta,
+		}
 	} catch (error) {
 		throw error
 	} finally {
