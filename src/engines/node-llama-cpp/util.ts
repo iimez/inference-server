@@ -6,7 +6,7 @@ import {
 	LlamaTextJSON,
 	ChatModelFunctionCall,
 } from 'node-llama-cpp'
-import { CompletionFinishReason, ChatMessage } from '#package/types/index.js'
+import { CompletionFinishReason, ChatMessage, ToolCallResult } from '#package/types/index.js'
 import { flattenMessageTextContent } from '#package/lib/flattenMessageTextContent.js'
 import { LlamaChatResult } from './types.js'
 
@@ -38,7 +38,7 @@ export function addFunctionCallToChatHistory({
 	functionName: string,
 	functionDescription?: string,
 	callParams: any,
-	callResult: any,
+	callResult: ToolCallResult,
 	rawCall?: LlamaTextJSON,
 	startsNewChunk?: boolean
 }) {
@@ -61,7 +61,7 @@ export function addFunctionCallToChatHistory({
 			name: functionName,
 			description: functionDescription,
 			params: callParams,
-			result: callResult,
+			result: typeof callResult === "string" ? callResult : callResult.text,
 			rawCall
 	};
 

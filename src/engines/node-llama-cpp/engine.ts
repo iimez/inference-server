@@ -27,6 +27,7 @@ import {
 	LlamaJsonSchemaGrammar,
 	LLamaChatContextShiftOptions,
 	LlamaContextOptions,
+	ChatWrapper,
 } from 'node-llama-cpp'
 import { StopGenerationTrigger } from 'node-llama-cpp/dist/utils/StopGenerationDetector'
 import {
@@ -65,6 +66,7 @@ export interface NodeLlamaCppInstance {
 	embeddingContext?: LlamaEmbeddingContext
 	completion?: LlamaCompletion
 	contextSequence: LlamaContextSequence
+	chatWrapper?: ChatWrapper
 }
 
 export interface NodeLlamaCppModelMeta {
@@ -88,6 +90,7 @@ export interface NodeLlamaCppModelConfig extends ModelConfig {
 	batchSize?: number
 	lora?: LlamaContextOptions['lora']
 	contextShiftStrategy?: LLamaChatContextShiftOptions['strategy']
+	chatWrapper?: ChatWrapper
 	device?: {
 		gpu?: boolean | 'auto' | (string & {})
 		gpuLayers?: number
@@ -233,12 +236,14 @@ export async function createInstance({ config, log }: EngineContext<NodeLlamaCpp
 		lastEvaluation: undefined,
 		completion: undefined,
 		contextSequence: context.getSequence(),
+		chatWrapper: config.chatWrapper 
 	}
 
 	if (config.initialMessages) {
 		const initialChatHistory = createChatMessageArray(config.initialMessages)
 		const chat = new LlamaChat({
 			contextSequence: instance.contextSequence!,
+			chatWrapper: instance.chatWrapper,
 			// autoDisposeSequence: true,
 		})
 
@@ -318,6 +323,7 @@ export async function processChatCompletionTask(
 		}
 		instance.chat = new LlamaChat({
 			contextSequence: contextSequence,
+			chatWrapper: instance.chatWrapper,
 			// autoDisposeSequence: true,
 		})
 		// reset state and reingest the conversation history
@@ -359,7 +365,7 @@ export async function processChatCompletionTask(
 	}
 
 	// see if the user submitted any function call results
-	const maxParallelCalls = config.tools?.maxParallelCalls ?? request.tools?.maxParallelCalls
+	const maxParallelCalls = request.tools?.maxParallelCalls ?? config.tools?.maxParallelCalls
 	const supportsParallelFunctionCalling =
 		instance.chat.chatWrapper.settings.functions.parallelism != null || !!maxParallelCalls
 	const resolvedFunctionCalls = []
@@ -461,7 +467,7 @@ export async function processChatCompletionTask(
 	const functionsOrGrammar = inputFunctions
 		? {
 				functions: { ...inputFunctions }, // clone the dict because it gets mutated below
-				documentFunctionParams: config.tools?.documentParams ?? request.tools?.documentParams,
+				documentFunctionParams: request.tools?.documentParams ?? config.tools?.documentParams,
 				maxParallelFunctionCalls: maxParallelCalls,
 				onFunctionCall: (functionCall: LlamaChatResponseFunctionCall<any>) => {
 					// log(LogLevels.debug, 'Called function', functionCall)
@@ -519,12 +525,12 @@ export async function processChatCompletionTask(
 		newChatHistory = lastEvaluation.cleanHistory
 
 		if (functionCalls) {
-			// find leading immediately evokable function calls (=have a handler function)
-			const evokableFunctionCalls = []
+			// find leading immediately invokable function calls (=have a handler function)
+			const invokableFunctionCalls = []
 			for (const functionCall of functionCalls) {
 				const functionDef = functionDefinitions[functionCall.functionName]
 				if (functionDef.handler) {
-					evokableFunctionCalls.push(functionCall)
+					invokableFunctionCalls.push(functionCall)
 				} else {
 					break
 				}
@@ -532,7 +538,7 @@ export async function processChatCompletionTask(
 
 			// resolve their results.
 			const results = await Promise.all(
-				evokableFunctionCalls.map(async (functionCall) => {
+				invokableFunctionCalls.map(async (functionCall) => {
 					const functionDef = functionDefinitions[functionCall.functionName]
 					if (!functionDef) {
 						throw new Error(`The model tried to call undefined function "${functionCall.functionName}"`)
@@ -564,6 +570,7 @@ export async function processChatCompletionTask(
 				}),
 			)
 			newContextWindowChatHistory = lastEvaluation.contextWindow
+			// let startNewChunk = supportsParallelFunctionCalling
 			let startNewChunk = true
 			// add results to chat history in the order they were called
 			for (const callResult of results) {
@@ -589,7 +596,7 @@ export async function processChatCompletionTask(
 			}
 
 			// check if all function calls were immediately evokable
-			const remainingFunctionCalls = functionCalls.slice(evokableFunctionCalls.length)
+			const remainingFunctionCalls = functionCalls.slice(invokableFunctionCalls.length)
 
 			if (remainingFunctionCalls.length === 0) {
 				// if yes, continue with generation

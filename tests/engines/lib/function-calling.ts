@@ -15,7 +15,7 @@ const getLocationWeather: ToolDefinition<GetLocationWeatherParams> = {
 		properties: {
 			location: {
 				type: 'string',
-				description: 'The city and state, e.g. San Francisco, CA',
+				description: 'The city and country, e.g. "Rome, Italy"',
 			},
 			unit: {
 				type: 'string',
@@ -27,9 +27,13 @@ const getLocationWeather: ToolDefinition<GetLocationWeatherParams> = {
 }
 
 const getUserLocation = {
-	description: 'Get the current user location',
+	description: 'Get the user\'s location as a city and country',
+	params: {
+		type: 'object',
+		properties: {},
+	},
 	handler: async () => {
-		return 'New York, New York, United States'
+		return 'New York, USA'
 	},
 }
 
@@ -37,30 +41,34 @@ export async function runFunctionCallTest(modelServer: ModelServer) {
 	const messages: ChatMessage[] = [
 		{
 			role: 'user',
-			content: "Where am I?",
+			content: 'Where am I?',
 		},
 	]
 	const turn1 = await createChatCompletion(modelServer, {
 		tools: {
-			getUserLocation,
+			definitions: { getUserLocation },
 		},
 		messages,
 	})
 	expect(turn1.result.message.toolCalls).toBeUndefined()
-	expect(turn1.result.message.content).toMatch(/New York/)
+	expect(turn1.result.message.content).toMatch(/new york/i)
 }
 
 export async function runSequentialFunctionCallTest(modelServer: ModelServer) {
 	const messages: ChatMessage[] = [
 		{
 			role: 'user',
-			content: "What's the weather like today? (hint: first use getUserLocation, then check the weather for the resulting location.)",
+			content:
+				// "What's the weather like today? (Hint: Use getUserLocation, then check the weather for the resulting location.)",
+				"What's the weather like today?",
 		},
 	]
 	const turn1 = await createChatCompletion(modelServer, {
 		tools: {
-			getUserLocation,
-			getLocationWeather,
+			definitions: {
+				getUserLocation,
+				getLocationWeather,
+			},
 		},
 		messages,
 	})
@@ -78,7 +86,6 @@ export async function runSequentialFunctionCallTest(modelServer: ModelServer) {
 		messages,
 	})
 	expect(turn2.result.message.content).toMatch(/cloudy/)
-
 }
 
 interface GetRandomNumberParams {
@@ -103,21 +110,22 @@ export async function runParallelFunctionCallTest(modelServer: ModelServer) {
 			},
 		},
 		handler: async (params) => {
-			const num =
-				Math.floor(Math.random() * (params.max - params.min + 1)) + params.min
+			const num = Math.floor(Math.random() * (params.max - params.min + 1)) + params.min
 			generatedNumbers.push(num)
 			return num.toString()
 		},
 	}
 
 	const turn1 = await createChatCompletion(modelServer, {
-		tools: { getRandomNumber },
+		tools: {
+			definitions: { getRandomNumber },
+		},
 		messages: [
 			{
 				role: 'user',
 				content: 'Roll the dice twice, then tell me the results.',
 			},
-		]
+		],
 	})
 
 	// console.debug({

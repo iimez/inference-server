@@ -1,5 +1,5 @@
 import type { SomeJSONSchema } from 'ajv/dist/types/json-schema'
-import type { Sharp } from 'sharp'
+import type { ChatWrapper } from 'node-llama-cpp'
 import type { BuiltInEngineName } from '#package/engines/index.js'
 import { ChatMessage, TextCompletionParams, ToolDefinition } from '#package/types/completions.js'
 import type { ContextShiftStrategy } from '#package/engines/node-llama-cpp/types.js'
@@ -15,6 +15,7 @@ import type {
 	TransformersJsDataType,
 } from '#package/engines/transformers-js/types.js'
 import type { InferenceRequest } from '#package/types/engine.js'
+
 export * from '#package/types/completions.js'
 export * from '#package/types/engine.js'
 
@@ -148,6 +149,12 @@ interface LlamaCppModelOptionsBase extends BuiltInModelOptionsBase {
      * @optional
      */
     contextShiftStrategy?: ContextShiftStrategy;
+		
+		/**
+		 * A ChatWrapper instance to use for templating conversation messages.
+		 * See https://node-llama-cpp.withcat.ai/guide/chat-wrapper
+		 */
+		chatWrapper?: ChatWrapper
 
     /**
      * Configuration for model tools and their execution.
