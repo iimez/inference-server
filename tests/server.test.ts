@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import request from 'supertest'
 import express, { Express } from 'express'
-import { ModelServer, ModelServerOptions } from '#package/server.js'
+import { InferenceServer, InferenceServerOptions } from '#package/server.js'
 import { createExpressMiddleware } from '#package/http.js'
 
 const testModel = 'llama-3.2-3b'
 
-const testConfig: ModelServerOptions = {
+const testConfig: InferenceServerOptions = {
 	concurrency: 1,
 	models: {
 		[testModel]: {
@@ -22,16 +22,16 @@ const testConfig: ModelServerOptions = {
 
 describe('Express App', () => {
 	let app: Express
-	let modelServer: ModelServer
+	let inferenceServer: InferenceServer
 
 	beforeAll(async () => {
-		modelServer = new ModelServer(testConfig)
+		inferenceServer = new InferenceServer(testConfig)
 		app = express()
-		app.use(express.json(), createExpressMiddleware(modelServer))
+		app.use(express.json(), createExpressMiddleware(inferenceServer))
 	})
 
 	it('Starts up without errors', async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 
 	it('Responds to requests', async () => {

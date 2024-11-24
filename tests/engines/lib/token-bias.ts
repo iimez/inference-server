@@ -1,9 +1,9 @@
 import { expect } from 'vitest'
-import { ModelServer } from '#package/server.js'
+import { InferenceServer } from '#package/server.js'
 import { createChatCompletion } from '../../util/completions.js'
 
-export async function runTokenBiasTest(modelServer: ModelServer) {
-	const unbiasedChat = await createChatCompletion(modelServer, {
+export async function runTokenBiasTest(inferenceServer: InferenceServer) {
+	const unbiasedChat = await createChatCompletion(inferenceServer, {
 		messages: [
 			{
 				role: 'user',
@@ -15,7 +15,7 @@ export async function runTokenBiasTest(modelServer: ModelServer) {
 	// 	unbiasedResponse: unbiasedChat.result.message.content,
 	// })
 	expect(unbiasedChat.result.message.content).toMatch(/time/)
-	const biasedChat = await createChatCompletion(modelServer, {
+	const biasedChat = await createChatCompletion(inferenceServer, {
 		tokenBias: {
 			'time': -100,
 			'a time...': -100,

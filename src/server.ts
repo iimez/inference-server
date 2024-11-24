@@ -30,24 +30,10 @@ import { validateModelOptions } from '#package/lib/validateModelOptions.js'
 import { getCacheDirPath } from '#package/lib/getCacheDirPath.js'
 
 /**
- * Configuration options for initializing a `ModelServer`.
- * The example provided starts a model server using gpt4all as the engine, with the task of text-completion.
- * @interface ModelServerOptions
- * @example 
- * const modelServer = await startModelServer({
- *	log: 'info',
- * 	concurrency: 2,
- *	models: {
- *		'phi3-mini-4k': {
- *			task: 'text-completion',
- *      		url: 'https://gpt4all.io/models/gguf/Phi-3-mini-4k-instruct.Q4_0.gguf',
- *			engine: 'gpt4all',
- *			maxInstances: 2,
- *		},
- *	},
- * })
+ * Configuration options for initializing a `InferenceServer`.
+ * @interface InferenceServerOptions
  */
-export interface ModelServerOptions {
+export interface InferenceServerOptions {
 	/**
 	 * A record of custom engines to be used for processing tasks. Each engine is identified by a unique name.
 	 * @type {Record<string, ModelEngine>}
@@ -81,20 +67,27 @@ export interface ModelServerOptions {
 	log?: Logger | LogLevel;
 }
 
-
-export function startModelServer(options: ModelServerOptions) {
-	const server = new ModelServer(options)
-	server.start()
-	return server
-}
-
 /**
  * Represents a server for managing and serving machine learning models, including model initialization,
- * request handling, and task processing.
+ * file downloads, request handling, and task processing. The example provided starts an inference server
+ * using llama.cpp as the engine, with the task of text-completion and two instances of smollm.
  *
- * @class ModelServer
+ * @class InferenceServer
+ * @example 
+ * const inferenceServer = new InferenceServer({
+ *   log: 'info',
+ *   concurrency: 2,
+ *   models: {
+ *     'smollm-135m': {
+ *       task: 'text-completion',
+ *       url: 'https://huggingface.co/HuggingFaceTB/smollm-135M-instruct-v0.2-Q8_0-GGUF/blob/main/smollm-135m-instruct-add-basics-q8_0.gguf',
+ *       engine: 'node-llama-cpp',
+ *       maxInstances: 2,
+ *   },
+ * })
+ * inferenceServer.start()
  */
-export class ModelServer {
+export class InferenceServer {
 	/** @property {ModelPool} pool - A pool for managing model instances and concurrency. */
 	pool: ModelPool
 
@@ -108,10 +101,10 @@ export class ModelServer {
 	log: Logger
 
 	/**
-	 * Constructs a `ModelServer` instance with the specified options.
-	 * @param {ModelServerOptions} options - Configuration options for the server.
+	 * Constructs a `InferenceServer` instance with the specified options.
+	 * @param {InferenceServerOptions} options - Configuration options for the server.
 	 */
-	constructor(options: ModelServerOptions) {
+	constructor(options: InferenceServerOptions) {
 		this.log = createSublogger(options.log)
 		let modelsCachePath = getCacheDirPath('models')
 		if (options.cachePath) {
@@ -188,8 +181,7 @@ export class ModelServer {
 		return !!this.pool.config.models[modelId]
 	}
 	/**
-	 * Starts the model server, initializing engines and preparing the model store and pool.
-	 * Usually you would not need to call this method. startModelServer() will do this for you.
+	 * Starts the inference server, initializing engines and preparing the model store and pool.
 	 * @returns {Promise<void>} Resolves when the server is fully started.
 	 */
 	async start() {
@@ -247,7 +239,7 @@ export class ModelServer {
 	/**
 	 * Requests an available model instance from the pool for a specific task.
 	 * There is not much need to call this method unless you are creating a custom task pipeline.
-  	 * This method is called internally by the processXTask methods.
+	 * This method is called internally by the processXTask methods.
 	 * @param {InferenceRequest} request - The inference request details.
 	 * @param {AbortSignal} [signal] - Optional signal to cancel the request.
 	 * @returns {Promise<ModelInstance>} The requested model instance.

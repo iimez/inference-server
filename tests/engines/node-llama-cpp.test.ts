@@ -1,6 +1,6 @@
 import { suite, test, expect, beforeAll, afterAll } from 'vitest'
 import fs from 'node:fs'
-import { ModelServer } from '#package/server.js'
+import { InferenceServer } from '#package/server.js'
 import { ChatMessage, ModelOptions } from '#package/types/index.js'
 import {
 	runStopTriggerTest,
@@ -50,34 +50,34 @@ const testModel: ModelOptions = {
 }
 
 suite('features', () => {
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		// log: 'debug',
 		models: {
 			test: testModel,
 		},
 	})
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 
 	test('stop generation trigger', async () => {
-		await runStopTriggerTest(modelServer)
+		await runStopTriggerTest(inferenceServer)
 	})
 
 	test('system message', async () => {
-		await runSystemMessageTest(modelServer)
+		await runSystemMessageTest(inferenceServer)
 	})
 
 	test('token bias', async () => {
-		await runTokenBiasTest(modelServer)
+		await runTokenBiasTest(inferenceServer)
 	})
 })
 
 suite('function calling', async () => {
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		log: 'debug',
 		models: {
 			test: {
@@ -95,52 +95,52 @@ suite('function calling', async () => {
 		},
 	})
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 
 	test('basic function call', async () => {
-		await runFunctionCallTest(modelServer)
+		await runFunctionCallTest(inferenceServer)
 	})
 	test('sequential function calls', async () => {
-		await runSequentialFunctionCallTest(modelServer)
+		await runSequentialFunctionCallTest(inferenceServer)
 	})
 	test('parallel function calls', async () => {
-		await runParallelFunctionCallTest(modelServer)
+		await runParallelFunctionCallTest(inferenceServer)
 	})
 })
 
 suite('grammar', async () => {
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		// log: 'debug',
 		models: {
 			test: testModel,
 		},
 	})
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 
 	test('built-in grammar', async () => {
-		await runBuiltInGrammarTest(modelServer)
+		await runBuiltInGrammarTest(inferenceServer)
 	})
 
 	test('gbnf string grammar', async () => {
-		await runRawGBNFGrammarTest(modelServer)
+		await runRawGBNFGrammarTest(inferenceServer)
 	})
 
 	test('json schema grammar', async () => {
-		await runJsonSchemaGrammarTest(modelServer)
+		await runJsonSchemaGrammarTest(inferenceServer)
 	})
 })
 
 suite('cache', () => {
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		// log: 'debug',
 		models: {
 			test: {
@@ -151,21 +151,21 @@ suite('cache', () => {
 		},
 	})
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 
 	test('reuse existing chat context', async () => {
-		await runContextReuseTest(modelServer)
+		await runContextReuseTest(inferenceServer)
 	})
 	test('no leak when handling multiple chat sessions', async () => {
-		await runContextLeakTest(modelServer)
+		await runContextLeakTest(inferenceServer)
 	})
 	test('reuse existing text completion context', async () => {
 		const firstPrompt = 'The opposite of red is'
-		const comp1 = await createTextCompletion(modelServer, {
+		const comp1 = await createTextCompletion(inferenceServer, {
 			model: 'test',
 			prompt: firstPrompt,
 			stop: ['.'],
@@ -174,7 +174,7 @@ suite('cache', () => {
 		// console.debug(comp1.result)
 
 		const secondPrompt = '. In consequence, '
-		const comp2 = await createTextCompletion(modelServer, {
+		const comp2 = await createTextCompletion(inferenceServer, {
 			model: 'test',
 			prompt: firstPrompt + comp1.result.text + secondPrompt,
 			stop: ['.'],
@@ -201,7 +201,7 @@ suite('preload', () => {
 			content: "It's 5!",
 		},
 	]
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		// log: 'debug',
 		models: {
 			test: {
@@ -212,13 +212,13 @@ suite('preload', () => {
 	})
 
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 	test('should utilize preloaded messages', async () => {
-		const chat = await createChatCompletion(modelServer, {
+		const chat = await createChatCompletion(inferenceServer, {
 			model: 'test',
 			messages: [
 				...initialMessages,
@@ -233,7 +233,7 @@ suite('preload', () => {
 	})
 
 	test('should not utilize preloaded messages', async () => {
-		const chat = await createChatCompletion(modelServer, {
+		const chat = await createChatCompletion(inferenceServer, {
 			model: 'test',
 			messages: [
 				{
@@ -250,7 +250,7 @@ suite('preload', () => {
 	})
 
 	test('assistant response prefill', async () => {
-		const chat = await createChatCompletion(modelServer, {
+		const chat = await createChatCompletion(inferenceServer, {
 			model: 'test',
 			messages: [
 				{
@@ -273,7 +273,7 @@ suite('preload', () => {
 
 suite('prefix', () => {
 	const prefix = 'The Secret is "koalabear"! I continuously remind myself -'
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		// log: 'debug',
 		models: {
 			test: {
@@ -284,13 +284,13 @@ suite('prefix', () => {
 	})
 
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 	test('should utilize prefix', async () => {
-		const comp = await createTextCompletion(modelServer, {
+		const comp = await createTextCompletion(inferenceServer, {
 			model: 'test',
 			prompt: prefix + ' It is really "',
 			stop: ['.'],
@@ -299,7 +299,7 @@ suite('prefix', () => {
 	})
 
 	test('should not utilize prefix', async () => {
-		const comp = await createTextCompletion(modelServer, {
+		const comp = await createTextCompletion(inferenceServer, {
 			model: 'test',
 			prompt: 'It is really "',
 			stop: ['.'],
@@ -309,55 +309,55 @@ suite('prefix', () => {
 })
 
 // suite('context shift', () => {
-// 	const modelServer = new ModelServer({
+// 	const inferenceServer = new InferenceServer({
 // 		// log: 'debug',
 // 		models: {
 // 			test: testModel,
 // 		},
 // 	})
 // 	beforeAll(async () => {
-// 		await modelServer.start()
+// 		await inferenceServer.start()
 // 	})
 // 	afterAll(async () => {
-// 		await modelServer.stop()
+// 		await inferenceServer.stop()
 // 	})
 // 	test('during first user message', async () => {
-// 		await runIngestionContextShiftTest(modelServer)
+// 		await runIngestionContextShiftTest(inferenceServer)
 // 	})
 // 	test('during assistant response', async () => {
-// 		await runGenerationContextShiftTest(modelServer)
+// 		await runGenerationContextShiftTest(inferenceServer)
 // 	})
 // })
 
 suite('ingest', () => {
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		// log: 'debug',
 		models: {
 			test: testModel,
 		},
 	})
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 	test('normal text', async () => {
-		const res = await runFileIngestionTest(modelServer, 'lovecraft')
+		const res = await runFileIngestionTest(inferenceServer, 'lovecraft')
 		expect(res.message.content).toMatch(/horror|lovecraft/i)
 	})
 	test('a small website', async () => {
-		const res = await runFileIngestionTest(modelServer, 'hackernews')
+		const res = await runFileIngestionTest(inferenceServer, 'hackernews')
 		expect(res.message.content).toMatch(/hacker|news/i)
 	})
 	test('a large website', async () => {
-		const res = await runFileIngestionTest(modelServer, 'github')
+		const res = await runFileIngestionTest(inferenceServer, 'github')
 		expect(res.message.content).toMatch(/github|html/i)
 	})
 })
 
 suite('timeout and cancellation', () => {
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		// log: 'debug',
 		models: {
 			test: {
@@ -368,15 +368,15 @@ suite('timeout and cancellation', () => {
 		},
 	})
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 	test('timeout', async () => {
-		await runTimeoutTest(modelServer)
+		await runTimeoutTest(inferenceServer)
 	})
 	test('cancellation', async () => {
-		await runCancellationTest(modelServer)
+		await runCancellationTest(inferenceServer)
 	})
 })

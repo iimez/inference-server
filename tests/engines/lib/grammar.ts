@@ -1,16 +1,16 @@
 import { expect } from 'vitest'
-import { ModelServer } from '#package/server.js'
+import { InferenceServer } from '#package/server.js'
 import { createChatCompletion } from '../../util/completions.js'
 import { ChatMessage } from '#package/types/index.js'
 
-export async function runBuiltInGrammarTest(modelServer: ModelServer) {
+export async function runBuiltInGrammarTest(inferenceServer: InferenceServer) {
 	const messages: ChatMessage[] = [
 		{
 			role: 'user',
 			content: 'Answer with a JSON object containing the key "test" with the value "test". And an array of cats, just strings with names.',
 		},
 	]
-	const turn1 = await createChatCompletion(modelServer, {
+	const turn1 = await createChatCompletion(inferenceServer, {
 		grammar: 'json',
 		messages,
 	})
@@ -28,7 +28,7 @@ export async function runBuiltInGrammarTest(modelServer: ModelServer) {
 		role: 'user',
 		content: 'Write a haiku using the name of the first cat in the array.',
 	})
-	const turn2 = await createChatCompletion(modelServer, {
+	const turn2 = await createChatCompletion(inferenceServer, {
 		messages,
 	})
 	// console.debug({
@@ -38,14 +38,14 @@ export async function runBuiltInGrammarTest(modelServer: ModelServer) {
 
 }
 
-export async function runRawGBNFGrammarTest(modelServer: ModelServer) {
+export async function runRawGBNFGrammarTest(inferenceServer: InferenceServer) {
 	const messages: ChatMessage[] = [
 		{
 			role: 'user',
 			content: 'Generate a {name, age}[] JSON array with at most 10 famous actors of all ages.',
 		},
 	]
-	const turn1 = await createChatCompletion(modelServer, {
+	const turn1 = await createChatCompletion(inferenceServer, {
 		grammar: 'custom-gbnf-string',
 		messages,
 		maxTokens: 512,
@@ -60,7 +60,7 @@ export async function runRawGBNFGrammarTest(modelServer: ModelServer) {
 	expect(data[0].age).toBeDefined()
 }
 
-export async function runJsonSchemaGrammarTest(modelServer: ModelServer) {
+export async function runJsonSchemaGrammarTest(inferenceServer: InferenceServer) {
 
 	const messages: ChatMessage[] = [
 		{
@@ -68,7 +68,7 @@ export async function runJsonSchemaGrammarTest(modelServer: ModelServer) {
 			content: 'Generate a {name, age} JSON object of a famous actor.',
 		},
 	]
-	const turn1 = await createChatCompletion(modelServer, {
+	const turn1 = await createChatCompletion(inferenceServer, {
 		grammar: 'custom-json-schema',
 		messages,
 		maxTokens: 512,

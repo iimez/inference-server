@@ -1,11 +1,10 @@
-import { startHTTPServer } from '#package/http.js'
+import { createExpressServer } from '#package/http.js'
 import OpenAI from 'openai'
 import readline from 'node:readline'
 
 // Printing two parallel completion processes to the console.
-
-const httpServer = await startHTTPServer({
-	listen: { port: 3000 },
+const localModels = new InferenceServer({
+	log: 'info',
 	concurrency: 2, // two clients may process chat completions at the same time.
 	models: {
 		'my-model': {
@@ -19,6 +18,10 @@ const httpServer = await startHTTPServer({
 		},
 	},
 })
+await localModels.start()
+const httpServer = createExpressServer(localModels)
+httpServer.listen(3000)
+
 const openai = new OpenAI({
 	baseURL: 'http://localhost:3000/openai/v1/',
 	apiKey: 'yes',

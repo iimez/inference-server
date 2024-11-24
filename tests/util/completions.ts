@@ -1,4 +1,4 @@
-import type { ModelServer } from '#package/server.js'
+import type { InferenceServer } from '#package/server.js'
 import { ChatCompletionRequest, TextCompletionRequest } from '#package/types/index.js'
 
 const testDefaults = {
@@ -9,7 +9,7 @@ const testDefaults = {
 const defaultTimeout = 30000
 
 export async function createChatCompletion(
-	server: ModelServer,
+	server: InferenceServer,
 	args: Omit<ChatCompletionRequest, 'model'> & { model?: string },
 	timeout = defaultTimeout
 ) {
@@ -34,7 +34,7 @@ export async function createChatCompletion(
 }
 
 export async function createTextCompletion(
-	server: ModelServer,
+	server: InferenceServer,
 	args: Omit<TextCompletionRequest, 'model'> & { model?: string },
 	timeout = defaultTimeout
 ) {

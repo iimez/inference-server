@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { OpenAI } from 'openai'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions.js'
-import type { ModelServer } from '#package/server.js'
+import type { InferenceServer } from '#package/server.js'
 import {
 	ChatCompletionRequest,
 	ToolDefinition,
@@ -122,7 +122,7 @@ function createResponseMessageContent(
 	return text
 }
 
-export function createChatCompletionHandler(modelServer: ModelServer) {
+export function createChatCompletionHandler(inferenceServer: InferenceServer) {
 	return async (req: IncomingMessage, res: ServerResponse) => {
 		let args: OpenAIChatCompletionParams
 
@@ -143,7 +143,7 @@ export function createChatCompletionHandler(modelServer: ModelServer) {
 			return
 		}
 
-		if (!modelServer.modelExists(args.model)) {
+		if (!inferenceServer.modelExists(args.model)) {
 			res.writeHead(400, { 'Content-Type': 'application/json' })
 			res.end(JSON.stringify({ error: 'Model does not exist' }))
 			return
@@ -246,7 +246,7 @@ export function createChatCompletionHandler(modelServer: ModelServer) {
 				minP: args.min_p ? args.min_p : undefined,
 				topK: args.top_k ? args.top_k : undefined,
 			})
-			const { instance, release } = await modelServer.requestInstance(
+			const { instance, release } = await inferenceServer.requestInstance(
 				completionReq,
 				controller.signal,
 			)

@@ -1,8 +1,7 @@
-import { startHTTPServer } from '../dist/http.js'
+import { createExpressServer } from '../dist/http.js'
+import { InferenceServer } from '../dist/server.js'
 
-// Starts a http server for up to two instances of phi3 and serves them via openai API.
-// startHTTPServer is only a thin wrapper around the ModelServer class that spawns a web server.
-startHTTPServer({
+const localModels = new InferenceServer({
 	log: 'info', // 'debug', 'info', 'warn', 'error' - or pass a function as custom logger.
 	// Limit how many instances may be handed out concurrently for processing.
 	// If its exceeded, requests will be queued up and stall until a model becomes available.
@@ -95,14 +94,14 @@ startHTTPServer({
 							// Call a weather API or something
 							return `The temperature in ${location} is 23°C`
 						},
-					}
-				}
-			}
+					},
+				},
+			},
 		},
 	},
-	// HTTP listen options. If you don't need a web server, use `startModelServer` or `new ModelServer()`.
-	// Accepted arguments are identical, apart from `listen`.
-	listen: {
-		port: 3000,
-	},
 })
+localModels.start()
+
+// Starts a http server for our two instances of smollm and serves them via openai API.
+const httpServer = createExpressServer(localModels)
+httpServer.listen(3000)

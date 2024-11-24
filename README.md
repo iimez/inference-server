@@ -23,9 +23,9 @@ The project includes a model resource pool, an inference queue and a HTTP API se
 Example with minimal configuration:
 
 ```ts basic.ts
-import { ModelServer } from 'inference-server'
+import { InferenceServer } from 'inference-server'
 
-const modelServer = new ModelServer({
+const localModels = new InferenceServer({
   log: 'info', // default is 'warn'
   models: {
     'my-model': { // Identifiers can use a-zA-Z0-9_:\-\.
@@ -36,8 +36,8 @@ const modelServer = new ModelServer({
     },
   },
 })
-await modelServer.start()
-const result = await modelServer.processChatCompletionTask({
+await localModels.start()
+const result = await localModels.processChatCompletionTask({
   model: 'my-model',
   messages: [
     {
@@ -47,17 +47,17 @@ const result = await modelServer.processChatCompletionTask({
   ],
 })
 console.debug(result)
-modelServer.stop()
+localModels.stop()
 ```
 
 Or, to start an OAI compatible HTTP server with two concurrent instances of the same model:
 
 ```ts http-api.ts
-import { startHTTPServer } from 'inference-server'
+import { InferenceServer, createExpressServer } from 'inference-server'
 import OpenAI from 'openai'
 
-const server = await startHTTPServer({
-  listen: { port: 3000 }, // apart from `listen` options are identical to ModelServer
+const localModels = new InferenceServer({
+  log: 'info', // default is 'warn'
   concurrency: 2, // two inference processes may run at the same time
   models: {
     'smollm': {
@@ -71,6 +71,9 @@ const server = await startHTTPServer({
     },
   },
 })
+localModels.start()
+const httpServer = createExpressServer(localModels)
+httpServer.listen(3000)
 
 const client = new OpenAI({
   baseURL: 'http://localhost:3000/openai/v1/',
@@ -88,7 +91,8 @@ for await (const chunk of completion) {
     process.stdout.write(chunk.choices[0].delta.content)
   }
 }
-server.stop()
+localModels.stop()
+httpServer.close()
 ```
 
 More usage examples:
@@ -139,6 +143,9 @@ Not in any particular order:
 - [x] Add stable-diffusion engine
 - [x] Implement more transformer.js tasks
 - [x] [CLI](https://github.com/iimez/inference-server/discussions/7)
+- [x] Rename InferenceServer and startHttpServer
+- [ ] Update task creation api
+- [ ] Use https://www.npmjs.com/package/uint8array-extras
 - [ ] Add some light jsdoc for server/pool/store methods
 - [ ] Should support adding a json schema grammar on completion requests (not just a grammar name)
 - [ ] utilize node-llama-cpp's support to reuse LlamaModel weights with multiple contexts (across instances)

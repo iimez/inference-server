@@ -1,11 +1,11 @@
 import { expect } from 'vitest'
-import { ModelServer } from '#package/server.js'
+import { InferenceServer } from '#package/server.js'
 import { ChatMessage } from '#package/types/index.js'
 import { createChatCompletion, parseInstanceId } from '../../util/completions.js'
 
 // conversation that tests whether reused instances leak their context
 export async function runContextLeakTest(
-	modelServer: ModelServer,
+	inferenceServer: InferenceServer,
 	model: string = 'test',
 ) {
 	const messagesA: ChatMessage[] = [
@@ -15,7 +15,7 @@ export async function runContextLeakTest(
 				"Please remember this fact for later: Platypuses have venomous spurs on their hind legs. Don't forget! Just answer with 'OK'.",
 		},
 	]
-	const responseA1 = await createChatCompletion(modelServer, {
+	const responseA1 = await createChatCompletion(inferenceServer, {
 		model,
 		temperature: 0,
 		messages: messagesA,
@@ -24,7 +24,7 @@ export async function runContextLeakTest(
 	})
 	const instanceIdA1 = parseInstanceId(responseA1.task.id)
 	// console.debug({ responseA1: responseA1.result.message.content })
-	const responseB1 = await createChatCompletion(modelServer, {
+	const responseB1 = await createChatCompletion(inferenceServer, {
 		stop: ['\n'],
 		maxTokens: 100,
 		messages: [
@@ -42,7 +42,7 @@ export async function runContextLeakTest(
 		role: 'user',
 		content: 'Remind me of one animal fact I mentioned earlier? One Sentence.',
 	})
-	const responseA2 = await createChatCompletion(modelServer, {
+	const responseA2 = await createChatCompletion(inferenceServer, {
 		stop: ['\n'],
 		messages: messagesA,
 		maxTokens: 100,

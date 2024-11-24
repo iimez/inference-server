@@ -1,12 +1,12 @@
 import { suite, test, expect, beforeAll, afterAll } from 'vitest'
 import sharp from 'sharp'
 import { CLIPTextModelWithProjection, CLIPVisionModelWithProjection } from '@huggingface/transformers'
-import { ModelServer } from '#package/server.js'
+import { InferenceServer } from '#package/server.js'
 import { loadImageFromFile } from '#package/lib/loadImage.js'
 import { cosineSimilarity } from '#package/lib/math.js'
 
 suite('basic', () => {
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		// log: 'debug',
 		models: {
 			'flux-schnell': {
@@ -81,14 +81,14 @@ suite('basic', () => {
 		},
 	})
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	}, 180000)
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 
 	test('text to image (sd-3.5-turbo)', async () => {
-		const imageRes = await modelServer.processTextToImageTask({
+		const imageRes = await inferenceServer.processTextToImageTask({
 			model: 'sd-3.5-turbo',
 			width: 512,
 			height: 512,
@@ -103,7 +103,7 @@ suite('basic', () => {
 		// 	await image.handle.toFile(`tests/engines/output-tti-sd-${i}.png`)
 		// }
 
-		const embeddingRes = await modelServer.processEmbeddingTask({
+		const embeddingRes = await inferenceServer.processEmbeddingTask({
 			model: 'jina-clip-v1',
 			input: [
 				{
@@ -126,7 +126,7 @@ suite('basic', () => {
 	}, 360000)
 
 	test('text to image (flux-schnell)', async () => {
-		const imageRes = await modelServer.processTextToImageTask({
+		const imageRes = await inferenceServer.processTextToImageTask({
 			model: 'flux-schnell',
 			width: 512,
 			height: 512,
@@ -140,7 +140,7 @@ suite('basic', () => {
 		// 	await image.handle.toFile(`tests/engines/output-tti-flux-${i}.png`)
 		// }
 
-		const embeddingRes = await modelServer.processEmbeddingTask({
+		const embeddingRes = await inferenceServer.processEmbeddingTask({
 			model: 'jina-clip-v1',
 			input: [
 				{
@@ -171,7 +171,7 @@ suite('basic', () => {
 			},
 		})
 		// await inputImage.handle.toFile('tests/engines/input-iti.png')
-		const imageRes = await modelServer.processImageToImageTask({
+		const imageRes = await inferenceServer.processImageToImageTask({
 			model: 'sdxl-turbo',
 			image: inputImage,
 			sampleSteps: 8,
@@ -185,7 +185,7 @@ suite('basic', () => {
 		// 	const image = imageRes.images[i]
 		// 	await image.handle.toFile(`tests/engines/output-iti-${i}.png`)
 		// }
-		const embeddingRes = await modelServer.processEmbeddingTask({
+		const embeddingRes = await inferenceServer.processEmbeddingTask({
 			model: 'jina-clip-v1',
 			input: [
 				{

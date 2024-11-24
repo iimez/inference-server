@@ -3,14 +3,14 @@ import type { OpenAI } from 'openai'
 import { EmbeddingRequest } from '#package/types/index.js'
 import { parseJSONRequestBody } from '#package/api/parseJSONRequestBody.js'
 import { omitEmptyValues } from '#package/lib/util.js'
-import { ModelServer } from '#package/server.js'
+import { InferenceServer } from '#package/server.js'
 
 // handler for v1/embeddings
 // https://platform.openai.com/docs/api-reference/embeddings
 
 type OpenAIEmbeddingsParams = OpenAI.EmbeddingCreateParams
 
-export function createEmbeddingsHandler(modelServer: ModelServer) {
+export function createEmbeddingsHandler(inferenceServer: InferenceServer) {
 	return async (req: IncomingMessage, res: ServerResponse) => {
 		let args: OpenAIEmbeddingsParams
 
@@ -30,7 +30,7 @@ export function createEmbeddingsHandler(modelServer: ModelServer) {
 			res.end(JSON.stringify({ error: 'Invalid request' }))
 			return
 		}
-		if (!modelServer.modelExists(args.model)) {
+		if (!inferenceServer.modelExists(args.model)) {
 			res.writeHead(400, { 'Content-Type': 'application/json' })
 			res.end(JSON.stringify({ error: 'Invalid model' }))
 			return
@@ -60,7 +60,7 @@ export function createEmbeddingsHandler(modelServer: ModelServer) {
 				input: args.input as string,
 			})
 
-			const { instance, release } = await modelServer.requestInstance(
+			const { instance, release } = await inferenceServer.requestInstance(
 				embeddingsReq,
 				controller.signal,
 			)

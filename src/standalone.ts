@@ -1,6 +1,7 @@
 import type { AddressInfo } from 'node:net'
 import { format as formatURL } from 'node:url'
-import { ModelHTTPServer, ModelHTTPServerOptions } from '#package/http.js'
+import { createExpressServer } from '#package/http.js'
+import { InferenceServer, InferenceServerOptions } from '#package/server.js'
 import { ChatWithVisionEngine } from '#package/experiments/ChatWithVision.js'
 import { VoiceFunctionCallEngine } from '#package/experiments/VoiceFunctionCall.js'
 
@@ -13,10 +14,7 @@ import {
 } from '@huggingface/transformers'
 
 // Currently only used for debugging. Do not use.
-const serverOptions: ModelHTTPServerOptions = {
-	listen: {
-		port: 3000,
-	},
+const serverOptions: InferenceServerOptions = {
 	log: 'debug',
 	concurrency: 2,
 	engines: {
@@ -333,9 +331,10 @@ const serverOptions: ModelHTTPServerOptions = {
 }
 
 async function main() {
-	const server = new ModelHTTPServer(serverOptions)
-	await server.start()
-	const { address, port } = server.httpServer.address() as AddressInfo
+	const inferenceServer = new InferenceServer(serverOptions)
+	await inferenceServer.start()
+	const httpServer = createExpressServer(inferenceServer)
+	const { address, port } = httpServer.address() as AddressInfo
 	const hostname = address === '' || address === '::' ? 'localhost' : address
 	const url = formatURL({
 		protocol: 'http',

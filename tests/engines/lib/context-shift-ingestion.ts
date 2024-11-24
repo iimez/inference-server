@@ -1,12 +1,12 @@
 import fs from 'node:fs'
 import { expect } from 'vitest'
-import { ModelServer } from '#package/server.js'
+import { InferenceServer } from '#package/server.js'
 import { ChatMessage } from '#package/types/index.js'
 import { createChatCompletion } from '../../util/completions.js'
 
 // conversation that tests behavior when context window is exceeded while model is ingesting text
 export async function runIngestionContextShiftTest(
-	modelServer: ModelServer,
+	inferenceServer: InferenceServer,
 	model: string = 'test',
 ) {
 
@@ -17,7 +17,7 @@ export async function runIngestionContextShiftTest(
 			content: text + '\n\nWhats that? Tell me more.',
 		},
 	]
-	const ingestionResponse = await createChatCompletion(modelServer, {
+	const ingestionResponse = await createChatCompletion(inferenceServer, {
 		model,
 		messages,
 		maxTokens: 512,
@@ -33,7 +33,7 @@ export async function runIngestionContextShiftTest(
 		content: 'Did your last response look sane? If so, answer only with "OK".',
 	})
 
-	const validationResponse = await createChatCompletion(modelServer, {
+	const validationResponse = await createChatCompletion(inferenceServer, {
 		model,
 		messages,
 		maxTokens: 8,

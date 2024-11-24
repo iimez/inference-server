@@ -1,14 +1,14 @@
 import http from 'node:http'
 import express from 'express'
 import OpenAI from 'openai'
-import { ModelServer } from '#package/server.js'
+import { InferenceServer } from '#package/server.js'
 import { createExpressMiddleware } from '#package/http.js'
 
-// Demonstration of using the ModelServer + Express middleware to serve an OpenAI API.
+// Demonstration of integrating with existing express server.
 
 // Create a server with a single model, limiting to 2 instances that can run concurrently.
 // Models will be downloaded on-demand or during ModelServer.start() if minInstances > 0.
-const modelServer = new ModelServer({
+const localModels = new InferenceServer({
 	concurrency: 2,
 	models: {
 		'my-model': {
@@ -21,10 +21,10 @@ const modelServer = new ModelServer({
 	},
 })
 
-await modelServer.start()
+await localModels.start()
 
 const app = express()
-app.use(express.json(), createExpressMiddleware(modelServer))
+app.use(express.json(), createExpressMiddleware(localModels))
 const server = http.createServer(app)
 server.listen(3001)
 

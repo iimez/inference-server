@@ -1,8 +1,8 @@
 import { expect } from 'vitest'
-import { ModelServer } from '#package/server.js'
+import { InferenceServer } from '#package/server.js'
 import { ChatCompletionRequest } from '#package/types/index.js'
 
-export async function runTimeoutTest(modelServer: ModelServer) {
+export async function runTimeoutTest(inferenceServer: InferenceServer) {
 	const args: ChatCompletionRequest = {
 		model: 'test',
 		messages: [
@@ -12,7 +12,7 @@ export async function runTimeoutTest(modelServer: ModelServer) {
 			},
 		],
 	}
-	const lock = await modelServer.pool.requestInstance(args)
+	const lock = await inferenceServer.pool.requestInstance(args)
 	const task = lock.instance.processChatCompletionTask(args, { timeout: 500 })
 	const result = await task.result
 	expect(result.message.content).toBeDefined()
@@ -23,7 +23,7 @@ export async function runTimeoutTest(modelServer: ModelServer) {
 	// })
 }
 
-export async function runCancellationTest(modelServer: ModelServer) {
+export async function runCancellationTest(inferenceServer: InferenceServer) {
 	const args: ChatCompletionRequest = {
 		model: 'test',
 		messages: [
@@ -33,7 +33,7 @@ export async function runCancellationTest(modelServer: ModelServer) {
 			},
 		],
 	}
-	const lock = await modelServer.pool.requestInstance(args)
+	const lock = await inferenceServer.pool.requestInstance(args)
 	const task = lock.instance.processChatCompletionTask(args)
 	setTimeout(() => {
 		task.cancel()

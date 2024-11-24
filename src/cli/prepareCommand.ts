@@ -1,7 +1,7 @@
 import type { CommandModule } from 'yargs'
 import path from 'node:path'
 import chalk from 'chalk'
-import { ModelServerOptions } from '#package/server.js'
+import { InferenceServerOptions } from '#package/server.js'
 import { ModelStore } from '#package/store.js'
 import { BuiltInModelOptions, ModelConfigBase, ModelEngine } from '#package/types/index.js'
 import { builtInEngineNames } from '#package/engines/index.js'
@@ -16,7 +16,7 @@ interface PrepareCommandArgs {
 	concurrency?: number
 }
 
-async function prepareAllModels(options: ModelServerOptions, concurrency?: number): Promise<void> {
+async function prepareAllModels(options: InferenceServerOptions, concurrency?: number): Promise<void> {
 	let modelsCachePath = getCacheDirPath('models')
 	if (options.cachePath) {
 		modelsCachePath = path.join(options.cachePath, 'models')

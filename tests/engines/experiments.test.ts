@@ -1,6 +1,6 @@
 import { suite, it, beforeAll, afterAll, expect } from 'vitest'
 import { Florence2ForConditionalGeneration, WhisperForConditionalGeneration } from '@huggingface/transformers'
-import { ModelServer } from '#package/server.js'
+import { InferenceServer } from '#package/server.js'
 import { ChatMessage, ToolDefinition } from '#package/types/index.js'
 import { ChatWithVisionEngine } from '#package/experiments/ChatWithVision.js'
 import { VoiceFunctionCallEngine } from '#package/experiments/VoiceFunctionCall.js'
@@ -10,7 +10,7 @@ import { loadAudioFromFile } from '#package/lib/loadAudio.js'
 
 suite('chat with vision', () => {
 	// florence2 generates a description of the image and passes it to phi3
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		// log: 'debug',
 		concurrency: 2,
 		engines: {
@@ -49,10 +49,10 @@ suite('chat with vision', () => {
 	})
 
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 
 	it('can see', async () => {
@@ -74,7 +74,7 @@ suite('chat with vision', () => {
 				],
 			},
 		]
-		const response = await createChatCompletion(modelServer, {
+		const response = await createChatCompletion(inferenceServer, {
 			model: 'vision-at-home',
 			temperature: 0,
 			messages,
@@ -119,7 +119,7 @@ suite('voice functions', () => {
 		},
 	}
 
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		// log: 'debug',
 		engines: {
 			'voice-function-calling': new VoiceFunctionCallEngine({
@@ -163,16 +163,16 @@ suite('voice functions', () => {
 	})
 
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 	it('can hear', async () => {
 		const audio = await loadAudioFromFile('tests/fixtures/tenagra.mp3', {
 			sampleRate: 16000,
 		})
-		const result = await modelServer.processSpeechToTextTask({
+		const result = await inferenceServer.processSpeechToTextTask({
 			model: 'voice-function-calling',
 			audio,
 		})

@@ -1,9 +1,9 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import url from 'node:url'
-import type { ModelServerOptions } from '#package/server.js'
+import type { InferenceServerOptions } from '#package/server.js'
 
-export async function loadConfig(customPath?: string): Promise<{ path: string; options: ModelServerOptions } | null> {
+export async function loadConfig(customPath?: string): Promise<{ path: string; options: InferenceServerOptions } | null> {
 	// If custom path provided, try only that
 	if (customPath) {
 		try {
@@ -27,9 +27,9 @@ export async function loadConfig(customPath?: string): Promise<{ path: string; o
 			// For package.json, we need to check for the 'infs' or 'inference-server' key
 			if (configName === 'package.json') {
 				const packageJson = options as any
-				const modelServerOptions = packageJson.infs || packageJson['inference-server']
-				if (modelServerOptions) {
-					return { path: configPath, options: modelServerOptions }
+				const inferenceServerOptions = packageJson.infs || packageJson['inference-server']
+				if (inferenceServerOptions) {
+					return { path: configPath, options: inferenceServerOptions }
 				}
 				continue
 			}
@@ -44,7 +44,7 @@ export async function loadConfig(customPath?: string): Promise<{ path: string; o
 	return null
 }
 
-async function importConfigOptions(configPath: string): Promise<ModelServerOptions> {
+async function importConfigOptions(configPath: string): Promise<InferenceServerOptions> {
 	// Handle different config formats
 	if (configPath.endsWith('.json')) {
 		const content = await fs.readFile(configPath, 'utf-8')

@@ -5,7 +5,7 @@ import { ModelPool } from '#package/index.js'
 import { elapsedMillis } from '#package/lib/util.js'
 import * as LlamaCppEngine from '#package/engines/node-llama-cpp/engine.js'
 
-// Complete multiple prompts concurrently using ModelPool.
+// Complete multiple prompts concurrently using ModelPool only.
 
 async function onPrepareInstance(instance) {
 	// can be used to set up the instance before it's used.

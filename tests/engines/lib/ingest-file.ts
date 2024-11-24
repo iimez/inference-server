@@ -1,10 +1,10 @@
 import fs from 'node:fs'
-import { ModelServer } from '#package/server.js'
+import { InferenceServer } from '#package/server.js'
 import { ChatMessage } from '#package/types/index.js'
 import { createChatCompletion } from '../../util/completions.js'
 
 export async function runFileIngestionTest(
-	modelServer: ModelServer,
+	inferenceServer: InferenceServer,
 	file: string,
 	prompt: string = 'Whats that?',
 	model: string = 'test',
@@ -16,7 +16,7 @@ export async function runFileIngestionTest(
 			content: text + '\n---\n\n' + prompt,
 		},
 	]
-	const response = await createChatCompletion(modelServer, {
+	const response = await createChatCompletion(inferenceServer, {
 		model,
 		messages,
 		maxTokens: 256,

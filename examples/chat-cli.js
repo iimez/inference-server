@@ -1,10 +1,10 @@
 import readline from 'node:readline'
 import chalk from 'chalk'
-import { ModelServer } from '#package/index.js'
+import { ModelServer as InferenceServer } from '#package/index.js'
 
 // A command-line chat example using the ModelServer.
 
-const modelServer = new ModelServer({
+const localModels = new InferenceServer({
 	// log: 'info',
 	models: {
 		'my-model': {
@@ -20,7 +20,7 @@ const modelServer = new ModelServer({
 
 console.log('Initializing models...')
 
-await modelServer.start()
+await localModels.start()
 
 const rl = readline.createInterface({
 	input: process.stdin,
@@ -40,7 +40,7 @@ while (true) {
 		content: input,
 	})
 	process.stdout.write(chalk.bold(chalk.dim('model > ')))
-	const result = await modelServer.processChatCompletionTask(
+	const result = await localModels.processChatCompletionTask(
 		{
 			model: 'my-model',
 			messages,

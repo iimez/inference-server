@@ -1,9 +1,9 @@
 import { suite, test, expect, beforeAll, afterAll } from 'vitest'
-import { ModelServer } from '#package/server.js'
+import { InferenceServer } from '#package/server.js'
 import { createChatCompletion } from './util/completions.js'
 
 suite('basic', () => {
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		log: 'debug',
 		models: {
 			test: {
@@ -16,14 +16,14 @@ suite('basic', () => {
 	})
 
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 
 	test('does a completion', async () => {
-		const chat = await createChatCompletion(modelServer, {
+		const chat = await createChatCompletion(inferenceServer, {
 			messages: [
 				{
 					role: 'user',
@@ -35,7 +35,7 @@ suite('basic', () => {
 	})
 
 	test('does two consecutive completions', async () => {
-		const chat1 = await createChatCompletion(modelServer, {
+		const chat1 = await createChatCompletion(inferenceServer, {
 			temperature: 1,
 			messages: [
 				{
@@ -45,7 +45,7 @@ suite('basic', () => {
 			],
 		})
 		expect(chat1.result.message.content.length).toBeGreaterThan(0)
-		const chat2 = await createChatCompletion(modelServer, {
+		const chat2 = await createChatCompletion(inferenceServer, {
 			temperature: 1,
 			messages: [
 				{
@@ -60,7 +60,7 @@ suite('basic', () => {
 	test('handles 10 simultaneous completion requests', async () => {
 		const results = await Promise.all(
 			Array.from({ length: 10 }, () =>
-				createChatCompletion(modelServer, {
+				createChatCompletion(inferenceServer, {
 					temperature: 1,
 					messages: [
 						{
@@ -77,7 +77,7 @@ suite('basic', () => {
 })
 
 suite('gpu', () => {
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		log: 'debug',
 		models: {
 			gpt4all: {
@@ -98,14 +98,14 @@ suite('gpu', () => {
 	})
 
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 
 	test('gpu completion', async () => {
-		const chat = await createChatCompletion(modelServer, {
+		const chat = await createChatCompletion(inferenceServer, {
 			model: 'gpt4all',
 			messages: [
 				{
@@ -118,7 +118,7 @@ suite('gpu', () => {
 	})
 
 	test('switch to different gpu model when necessary', async () => {
-		const chat = await createChatCompletion(modelServer, {
+		const chat = await createChatCompletion(inferenceServer, {
 			model: 'node-llama-cpp',
 			messages: [
 				{
@@ -132,7 +132,7 @@ suite('gpu', () => {
 
 	test('handle simultaneous requests to two gpu models', async () => {
 		const [chat1, chat2] = await Promise.all([
-			createChatCompletion(modelServer, {
+			createChatCompletion(inferenceServer, {
 				model: 'node-llama-cpp',
 				messages: [
 					{
@@ -141,7 +141,7 @@ suite('gpu', () => {
 					},
 				],
 			}),
-			createChatCompletion(modelServer, {
+			createChatCompletion(inferenceServer, {
 				model: 'gpt4all',
 				messages: [
 					{

@@ -19,7 +19,7 @@ suite('ingest', () => {
 		const model = await llama.loadModel({
 			modelPath: path.resolve(
 				os.homedir(),
-				// '.cache/lmodelServer/huggingface/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF-main/Meta-Llama-3-8B-Instruct.Q4_0.gguf',
+				// '.cache/linferenceServer/huggingface/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF-main/Meta-Llama-3-8B-Instruct.Q4_0.gguf',
 				'.cache/inference-server/huggingface.co/mradermacher/Meta-Llama-3-8B-Instruct-GGUF-main/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf',
 			),
 		})

@@ -261,7 +261,7 @@ export class ModelPool extends EventEmitter3<ModelPoolEvent> {
 	) {
 		if (!this.engines) {
 			throw new Error(
-				'No engines available. Make sure the pool is initialized and ModelServer.start() or ModelPool.init() were called.',
+				'No engines available. Make sure the pool is initialized and inferenceServer.start() or ModelPool.init() were called.',
 			)
 		}
 		const model = this.config.models[modelId]

@@ -1,6 +1,6 @@
 // import { CLIPTextModelWithProjection, CLIPVisionModelWithProjection } from '@huggingface/transformers'
 
-/** @type {import('#package/server.js').ModelServerOptions} */
+/** @type {import('#package/server.js').InferenceServerOptions} */
 export const config = {
 	models: {
 		'nomic-text-embed': {

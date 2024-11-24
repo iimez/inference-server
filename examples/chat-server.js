@@ -1,9 +1,9 @@
 import http from 'node:http'
-import { startModelServer } from '#package/index.js'
+import { InferenceServer } from '#package/index.js'
 
 // A minimal chat server using the ModelServer.
 
-const modelServer = await startModelServer({
+const localModels = new InferenceServer({
 	log: 'info',
 	concurrency: 2,
 	models: {
@@ -15,6 +15,7 @@ const modelServer = await startModelServer({
 		},
 	},
 })
+await localModels.start()
 
 const httpServer = http.createServer((req, res) => {
 	if (req.url === '/chat' && req.method === 'POST') {

@@ -1,5 +1,5 @@
 import { suite, test, expect, beforeAll, afterAll } from 'vitest'
-import { ModelServer } from '#package/server.js'
+import { InferenceServer } from '#package/server.js'
 import { cosineSimilarity } from '#package/lib/math.js'
 import { loadImageFromFile, saveImageToFile } from '#package/lib/loadImage.js'
 import { saveAudioToFile } from '#package/lib/loadAudio.js'
@@ -15,7 +15,7 @@ import {
 } from '@huggingface/transformers'
 
 suite('basic', () => {
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		log: 'debug',
 		models: {
 			'mxbai-embed-large-v1': {
@@ -123,14 +123,14 @@ suite('basic', () => {
 		},
 	})
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 	
 	test('text completion', async () => {
-		const res = await modelServer.processTextCompletionTask({
+		const res = await inferenceServer.processTextCompletionTask({
 			model: 'mobilellm',
 			prompt: 'The opposite of orange is',
 			maxTokens: 32,
@@ -142,7 +142,7 @@ suite('basic', () => {
 
 	test('cat recognition', async () => {
 		const image = await loadImageFromFile('tests/fixtures/blue-cat.jpg')
-		const res = await modelServer.processObjectRecognitionTask({
+		const res = await inferenceServer.processObjectRecognitionTask({
 			model: 'owlv2-base',
 			image,
 			labels: ['cat', 'smurf'],
@@ -155,7 +155,7 @@ suite('basic', () => {
 
 	test('table recognition', async () => {
 		const image = await loadImageFromFile('tests/fixtures/table.png')
-		const tableRes = await modelServer.processObjectRecognitionTask({
+		const tableRes = await inferenceServer.processObjectRecognitionTask({
 			model: 'table-transformer-detection',
 			image,
 		})
@@ -164,7 +164,7 @@ suite('basic', () => {
 		// padding because https://github.com/microsoft/table-transformer/issues/21
 		const paddedCrop = await createPaddedCrop(image, tableObject.box, 40)
 		// await saveImageToFile(paddedCrop, 'tests/fixtures/table-detected.png')
-		const tableStructureRes = await modelServer.processObjectRecognitionTask({
+		const tableStructureRes = await inferenceServer.processObjectRecognitionTask({
 			model: 'table-transformer-structure-recognition',
 			image: paddedCrop,
 		})
@@ -176,13 +176,13 @@ suite('basic', () => {
 	})
 
 	test('text to speech to text', async () => {
-		const speechRes = await modelServer.processTextToSpeechTask({
+		const speechRes = await inferenceServer.processTextToSpeechTask({
 			model: 'speecht5',
 			text: 'Hello world, this is a test synthesizing speech.',
 		})
 		expect(speechRes.audio).toBeTruthy()
 		// await saveAudioToFile(speechRes.audio, 'tests/fixtures/speecht5.wav')
-		const transcriptionRes = await modelServer.processSpeechToTextTask({
+		const transcriptionRes = await inferenceServer.processSpeechToTextTask({
 			model: 'whisper-base',
 			audio: speechRes.audio,
 		})
@@ -191,7 +191,7 @@ suite('basic', () => {
 
 	test('ocr single line', async () => {
 		const ocrImage = await loadImageFromFile('tests/fixtures/ocr-line.png')
-		const res = await modelServer.processImageToTextTask({
+		const res = await inferenceServer.processImageToTextTask({
 			model: 'trocr-printed',
 			image: ocrImage,
 		})
@@ -200,7 +200,7 @@ suite('basic', () => {
 
 	test('ocr multiline', async () => {
 		const ocrImage = await loadImageFromFile('tests/fixtures/ocr-multiline.png')
-		const res = await modelServer.processImageToTextTask({
+		const res = await inferenceServer.processImageToTextTask({
 			model: 'florence2-large',
 			image: ocrImage,
 			// see doc here for prompts: https://huggingface.co/microsoft/Florence-2-base#tasks
@@ -214,7 +214,7 @@ suite('basic', () => {
 			loadImageFromFile('tests/fixtures/blue-cat.jpg'),
 			loadImageFromFile('tests/fixtures/red-cat.jpg'),
 		])
-		const res = await modelServer.processEmbeddingTask({
+		const res = await inferenceServer.processEmbeddingTask({
 			model: 'jina-clip-v1',
 			input: [
 				{
@@ -247,7 +247,7 @@ suite('basic', () => {
 	})
 
 	test('text embedding', async () => {
-		const res = await modelServer.processEmbeddingTask({
+		const res = await inferenceServer.processEmbeddingTask({
 			model: 'mxbai-embed-large-v1',
 			input: [
 				'Represent this sentence for searching relevant passages: A man is eating a piece of bread',

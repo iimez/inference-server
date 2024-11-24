@@ -1,9 +1,9 @@
 import { expect } from 'vitest'
-import { ModelServer } from '#package/server.js'
+import { InferenceServer } from '#package/server.js'
 import { createChatCompletion } from '../../util/completions.js'
 
-export async function runSystemMessageTest(modelServer: ModelServer) {
-	const chat = await createChatCompletion(modelServer, {
+export async function runSystemMessageTest(inferenceServer: InferenceServer) {
+	const chat = await createChatCompletion(inferenceServer, {
 		messages: [
 			{
 				role: 'system',

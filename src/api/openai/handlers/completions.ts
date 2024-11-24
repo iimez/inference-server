@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { OpenAI } from 'openai'
-import type { ModelServer } from '#package/server.js'
+import type { InferenceServer } from '#package/server.js'
 import { TextCompletionRequest } from '#package/types/index.js'
 import { parseJSONRequestBody } from '#package/api/parseJSONRequestBody.js'
 import { omitEmptyValues } from '#package/lib/util.js'
@@ -21,7 +21,7 @@ interface OpenAICompletionChunk extends OpenAI.Completions.Completion {
 	usage?: OpenAI.CompletionUsage
 }
 
-export function createCompletionHandler(modelServer: ModelServer) {
+export function createCompletionHandler(inferenceServer: InferenceServer) {
 	return async (req: IncomingMessage, res: ServerResponse) => {
 		let args: OpenAICompletionParams
 
@@ -41,7 +41,7 @@ export function createCompletionHandler(modelServer: ModelServer) {
 			res.end(JSON.stringify({ error: 'Invalid request' }))
 			return
 		}
-		if (!modelServer.modelExists(args.model)) {
+		if (!inferenceServer.modelExists(args.model)) {
 			res.writeHead(400, { 'Content-Type': 'application/json' })
 			res.end(JSON.stringify({ error: 'Invalid model' }))
 			return
@@ -102,7 +102,7 @@ export function createCompletionHandler(modelServer: ModelServer) {
 				topK: args.top_k ? args.top_k : undefined,
 			})
 
-			const { instance, release } = await modelServer.requestInstance(
+			const { instance, release } = await inferenceServer.requestInstance(
 				completionReq,
 				controller.signal,
 			)

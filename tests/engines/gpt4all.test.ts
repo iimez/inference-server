@@ -1,5 +1,5 @@
 import { suite, it, test, beforeAll, afterAll, expect } from 'vitest'
-import { ModelServer } from '#package/server.js'
+import { InferenceServer } from '#package/server.js'
 import {
 	ChatCompletionRequest,
 	ChatMessage,
@@ -35,7 +35,7 @@ const testModel: ModelOptions = {
 }
 
 suite('features', () => {
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		// log: 'debug',
 		models: {
 			test: testModel,
@@ -43,23 +43,23 @@ suite('features', () => {
 	})
 
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 
 	test('stop generation trigger', async () => {
-		await runStopTriggerTest(modelServer)
+		await runStopTriggerTest(inferenceServer)
 	})
 
 	test('system message', async () => {
-		await runSystemMessageTest(modelServer)
+		await runSystemMessageTest(inferenceServer)
 	})
 })
 
 suite('cache', () => {
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		// log: 'debug',
 		models: {
 			test: testModel,
@@ -67,19 +67,19 @@ suite('cache', () => {
 	})
 
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 
 	it('should reuse context on stateless requests', async () => {
-		await runContextReuseTest(modelServer)
+		await runContextReuseTest(inferenceServer)
 	})
 
 	it('should not leak when handling multiple sessions', async () => {
-		await runContextLeakTest(modelServer)
+		await runContextLeakTest(inferenceServer)
 	})
 })
 
@@ -98,7 +98,7 @@ suite('preload', () => {
 			content: "It's 5!",
 		},
 	]
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		models: {
 			test: {
 				task: 'text-completion',
@@ -113,10 +113,10 @@ suite('preload', () => {
 	})
 
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 	test('should utilize preloaded messages', async () => {
 		const args: ChatCompletionRequest = {
@@ -130,7 +130,7 @@ suite('preload', () => {
 			],
 		}
 
-		const lock = await modelServer.pool.requestInstance(args)
+		const lock = await inferenceServer.pool.requestInstance(args)
 
 		// @ts-ignore
 		const activeSession = lock.instance.engineInstance.activeChatSession
@@ -150,7 +150,7 @@ suite('preload', () => {
 			],
 		}
 
-		const lock = await modelServer.pool.requestInstance(args)
+		const lock = await inferenceServer.pool.requestInstance(args)
 
 		// const internalMessagesBefore = lock.instance.llm.activeChatSession.messages
 		// console.debug({
@@ -171,7 +171,7 @@ suite('preload', () => {
 })
 
 suite('timeout and cancellation', () => {
-	const modelServer = new ModelServer({
+	const inferenceServer = new InferenceServer({
 		log: 'debug',
 		models: {
 			test: {
@@ -182,15 +182,15 @@ suite('timeout and cancellation', () => {
 		},
 	})
 	beforeAll(async () => {
-		await modelServer.start()
+		await inferenceServer.start()
 	})
 	afterAll(async () => {
-		await modelServer.stop()
+		await inferenceServer.stop()
 	})
 	test('timeout', async () => {
-		await runTimeoutTest(modelServer)
+		await runTimeoutTest(inferenceServer)
 	})
 	test('cancellation', async () => {
-		await runCancellationTest(modelServer)
+		await runCancellationTest(inferenceServer)
 	})
 })
