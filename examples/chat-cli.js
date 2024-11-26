@@ -40,17 +40,13 @@ while (true) {
 		content: input,
 	})
 	process.stdout.write(chalk.bold(chalk.dim('model > ')))
-	const result = await localModels.processChatCompletionTask(
-		{
-			model: 'my-model',
-			messages,
+	const result = await localModels.processChatCompletionTask({
+		model: 'my-model',
+		messages,
+		onChunk: (chunk) => {
+			process.stdout.write(chunk.text)
 		},
-		{
-			onChunk: (chunk) => {
-				process.stdout.write(chunk.text)
-			},
-		},
-	)
+	})
 	messages.push(result.message)
 	process.stdout.write(' ' + chalk.dim(`[${result.finishReason}]`) + '\n')
 }

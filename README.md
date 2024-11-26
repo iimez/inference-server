@@ -143,9 +143,7 @@ Not in any particular order:
 - [x] Add stable-diffusion engine
 - [x] Implement more transformer.js tasks
 - [x] [CLI](https://github.com/iimez/inference-server/discussions/7)
-- [x] Rename InferenceServer and startHttpServer
-- [ ] Update task creation api
-- [ ] Use https://www.npmjs.com/package/uint8array-extras
+- [x] Rename InferenceServer and startHttpServer and refactor task types
 - [ ] Add some light jsdoc for server/pool/store methods
 - [ ] Should support adding a json schema grammar on completion requests (not just a grammar name)
 - [ ] utilize node-llama-cpp's support to reuse LlamaModel weights with multiple contexts (across instances)

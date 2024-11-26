@@ -1,7 +1,7 @@
 import type { SomeJSONSchema } from 'ajv/dist/types/json-schema'
 import type { ChatWrapper } from 'node-llama-cpp'
 import type { BuiltInEngineName } from '#package/engines/index.js'
-import { ChatMessage, TextCompletionParams, ToolDefinition } from '#package/types/completions.js'
+import { ChatMessage, ToolDefinition } from '#package/types/chat.js'
 import type { ContextShiftStrategy } from '#package/engines/node-llama-cpp/types.js'
 import type {
 	StableDiffusionWeightType,
@@ -14,24 +14,16 @@ import type {
 	TransformersJsProcessorClass,
 	TransformersJsDataType,
 } from '#package/engines/transformers-js/types.js'
-import type { InferenceRequest } from '#package/types/engine.js'
+import type { InferenceParams, TextCompletionParams } from '#package/types/engine.js'
+import type { TaskKind } from '#package/types/tasks.js'
 
-export * from '#package/types/completions.js'
+export * from '#package/types/chat.js'
 export * from '#package/types/engine.js'
-
-export type ModelTaskType =
-	| 'text-completion'
-	| 'embedding'
-	| 'image-to-text'
-	| 'image-to-image'
-	| 'text-to-image'
-	| 'speech-to-text'
-	| 'text-to-speech'
-	| 'object-detection'
+export * from '#package/types/tasks.js'
 
 export interface ModelOptionsBase {
 	engine: BuiltInEngineName | (string & {})
-	task: ModelTaskType | (string & {})
+	task: TaskKind | (string & {})
 	prepare?: 'blocking' | 'async' | 'on-demand'
 	minInstances?: number
 	maxInstances?: number
@@ -40,7 +32,7 @@ export interface ModelOptionsBase {
 
 export interface BuiltInModelOptionsBase extends ModelOptionsBase {
 	engine: BuiltInEngineName
-	task: ModelTaskType
+	task: TaskKind
 	url?: string
 	location?: string
 }
@@ -56,7 +48,7 @@ export interface ModelConfigBase extends ModelOptionsBase {
 export interface ModelConfig extends ModelConfigBase {
 	url?: string
 	location?: string
-	task: ModelTaskType | (string & {})
+	task: TaskKind | (string & {})
 	engine: BuiltInEngineName | (string & {})
 	// minInstances: number
 	// maxInstances: number
@@ -89,7 +81,7 @@ export interface ModelRequestMeta {
 	abortController: AbortController
 }
 
-export type ModelInstanceRequest = ModelRequestMeta & InferenceRequest
+export type ModelInstanceRequest = ModelRequestMeta & InferenceParams
 
 interface EmbeddingModelOptions {
 	task: 'embedding'

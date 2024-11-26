@@ -1,6 +1,5 @@
 import StableDiffusion from '@lmagder/node-stable-diffusion-cpp'
 import { gguf } from '@huggingface/gguf'
-import sharp from 'sharp'
 import fs from 'node:fs'
 import path from 'node:path'
 import {
@@ -9,9 +8,10 @@ import {
 	ModelConfig,
 	EngineTextToImageResult,
 	ModelFileSource,
-	EngineTextToImageArgs,
 	Image,
-	EngineImageToImageArgs,
+	TextToImageTaskArgs,
+	EngineTaskContext,
+	ImageToImageTaskArgs,
 } from '#package/types/index.js'
 import { LogLevel, LogLevels } from '#package/lib/logger.js'
 import { downloadModelFile } from '#package/lib/downloadModelFile.js'
@@ -239,24 +239,24 @@ export async function createInstance({ config, log }: EngineContext<StableDiffus
 }
 
 export async function processTextToImageTask(
-	{ request, config, log }: EngineTextToImageArgs<StableDiffusionModelConfig>,
-	instance: StableDiffusionInstance,
+	task: TextToImageTaskArgs,
+	ctx: EngineTaskContext<StableDiffusionInstance, StableDiffusionModelConfig, StableDiffusionModelMeta>,
 	signal?: AbortSignal,
 ): Promise<EngineTextToImageResult> {
-	const seed = request.seed ?? getRandomNumber(0, 1000000)
+	const { instance, config, log } = ctx
+	const seed = task.seed ?? getRandomNumber(0, 1000000)
 	const results = await instance.context.txt2img({
-		prompt: request.prompt,
-		negativePrompt: request.negativePrompt,
-		width: request.width || 512,
-		height: request.height || 512,
-		batchCount: request.batchCount,
-		sampleMethod: getSamplingMethod(request.samplingMethod || config.samplingMethod),
-		sampleSteps: request.sampleSteps,
-		cfgScale: request.cfgScale,
-		// @ts-ignore
-		guidance: request.guidance,
-		styleRatio: request.styleRatio,
-		controlStrength: request.controlStrength,
+		prompt: task.prompt,
+		negativePrompt: task.negativePrompt,
+		width: task.width || 512,
+		height: task.height || 512,
+		batchCount: task.batchCount,
+		sampleMethod: getSamplingMethod(task.samplingMethod || config.samplingMethod),
+		sampleSteps: task.sampleSteps,
+		cfgScale: task.cfgScale,
+		guidance: task.guidance,
+		styleRatio: task.styleRatio,
+		controlStrength: task.controlStrength,
 		normalizeInput: false,
 		seed,
 	})
@@ -264,13 +264,6 @@ export async function processTextToImageTask(
 	const images: Image[] = []
 	for (const [idx, img] of results.entries()) {
 		images.push({
-			// handle: sharp(img.data, {
-			// 	raw: {
-			// 		width: img.width,
-			// 		height: img.height,
-			// 		channels: img.channel,
-			// 	},
-			// }),
 			data: img.data,
 			width: img.width,
 			height: img.height,
@@ -287,80 +280,56 @@ export async function processTextToImageTask(
 }
 
 export async function processImageToImageTask(
-	{ request, config, log }: EngineImageToImageArgs<StableDiffusionModelConfig>,
-	instance: StableDiffusionInstance,
+	task: ImageToImageTaskArgs,
+	ctx: EngineTaskContext<StableDiffusionInstance, StableDiffusionModelConfig, StableDiffusionModelMeta>,
 	signal?: AbortSignal,
 ): Promise<EngineTextToImageResult> {
-	const seed = request.seed ?? getRandomNumber(0, 1000000)
+	const { instance, config, log } = ctx
+	const seed = task.seed ?? getRandomNumber(0, 1000000)
 	console.debug('processImageToImageTask', {
-		width: request.image.width,
-		height: request.image.height,
-		channel: request.image.channels as 3 | 4,
+		width: task.image.width,
+		height: task.image.height,
+		channel: task.image.channels as 3 | 4,
 	})
 	const initImage = {
 		// data: await request.image.handle.raw().toBuffer(),
-		data: request.image.data,
-		width: request.image.width,
-		height: request.image.height,
-		channel: request.image.channels as 3 | 4,
+		data: task.image.data,
+		width: task.image.width,
+		height: task.image.height,
+		channel: task.image.channels as 3 | 4,
 	}
 	const results = await instance.context.img2img({
 		initImage,
-		prompt: request.prompt,
-		width: request.width || 512,
-		height: request.height || 512,
-		batchCount: request.batchCount,
-		sampleMethod: getSamplingMethod(request.samplingMethod || config.samplingMethod),
-		cfgScale: request.cfgScale,
-		sampleSteps: request.sampleSteps,
-		// @ts-ignore
-		guidance: request.guidance,
-		strength: request.strength,
-		styleRatio: request.styleRatio,
-		controlStrength: request.controlStrength,
+		prompt: task.prompt,
+		width: task.width || 512,
+		height: task.height || 512,
+		batchCount: task.batchCount,
+		sampleMethod: getSamplingMethod(task.samplingMethod || config.samplingMethod),
+		cfgScale: task.cfgScale,
+		sampleSteps: task.sampleSteps,
+		guidance: task.guidance,
+		strength: task.strength,
+		styleRatio: task.styleRatio,
+		controlStrength: task.controlStrength,
 		seed,
 	})
 
 	const images: Image[] = []
-	// to sharp
-	// const imagePromises = results.map(async (img, idx) => {
-	// 	return await sharp(img.data, {
-	// 			raw: {
-	// 				width: img.width,
-	// 				height: img.height,
-	// 				channels: img.channel,
-	// 			},
-	// 		})
-	// 	})
 
 	for (const [idx, img] of results.entries()) {
-		console.debug('img', {
-			id: idx,
-			width: img.width,
-			height: img.height,
-			channels: img.channel,
-		})
+		// console.debug('img', {
+		// 	id: idx,
+		// 	width: img.width,
+		// 	height: img.height,
+		// 	channels: img.channel,
+		// })
 
 		images.push({
-			// handle: sharp(img.data, {
-			// 	raw: {
-			// 		width: img.width,
-			// 		height: img.height,
-			// 		channels: img.channel,
-			// 	},
-			// }),
 			data: img.data,
 			width: img.width,
 			height: img.height,
 			channels: img.channel,
 		})
-
-		// images.push({
-		// 	data: img.data,
-		// 	width: img.width,
-		// 	height: img.height,
-		// 	channels: img.channel,
-		// })
 	}
 	if (!images.length) {
 		throw new Error('No images generated')

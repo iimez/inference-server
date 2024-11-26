@@ -1,6 +1,6 @@
 import { IncomingMessage, ServerResponse } from 'node:http'
 import type { OpenAI } from 'openai'
-import { EmbeddingRequest } from '#package/types/index.js'
+import { EmbeddingParams } from '#package/types/index.js'
 import { parseJSONRequestBody } from '#package/api/parseJSONRequestBody.js'
 import { omitEmptyValues } from '#package/lib/util.js'
 import { InferenceServer } from '#package/server.js'
@@ -55,7 +55,7 @@ export function createEmbeddingsHandler(inferenceServer: InferenceServer) {
 				throw new Error('Input must be a string')
 			}
 
-			const embeddingsReq = omitEmptyValues<EmbeddingRequest>({
+			const embeddingsReq = omitEmptyValues<EmbeddingParams>({
 				model: args.model,
 				input: args.input as string,
 			})

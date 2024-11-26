@@ -1,6 +1,8 @@
 import { suite, test, expect, beforeAll, afterAll } from 'vitest'
 import OpenAI from 'openai'
-import { ModelHTTPServer } from '#package/http.js'
+import http from 'node:http'
+import { createExpressServer } from '#package/http.js'
+import { InferenceServer } from '#package/server.js'
 
 const chatModel = 'chat'
 const embeddingsModel = 'text-embed'
@@ -197,15 +199,15 @@ function runOpenAITests(client: OpenAI) {
 }
 
 suite('OpenAI API (node-llama-cpp)', () => {
-	let server: ModelHTTPServer
+	let inferenceServer: InferenceServer
+	let webServer: http.Server
 	const openai = new OpenAI({
 		baseURL: 'http://localhost:3000/openai/v1/',
 		apiKey: '123',
 	})
 
 	beforeAll(async () => {
-		server = new ModelHTTPServer({
-			listen: { port: 3000 },
+		inferenceServer = new InferenceServer({
 			concurrency: 2,
 			models: {
 				[embeddingsModel]: {
@@ -228,27 +230,30 @@ suite('OpenAI API (node-llama-cpp)', () => {
 				},
 			},
 		})
-		await server.start()
+		await inferenceServer.start()
+		webServer = createExpressServer(inferenceServer)
+		webServer.listen(3000)
 	})
 
 	afterAll(async () => {
-		await server.stop()
+		webServer.close()
+		await inferenceServer.stop()
 	})
 
 	runOpenAITests(openai)
 })
 
 suite('OpenAI API (gpt4all)', () => {
-	let server: ModelHTTPServer
+	let inferenceServer: InferenceServer
+	let webServer: http.Server
 	const openai = new OpenAI({
 		baseURL: 'http://localhost:3001/openai/v1/',
 		apiKey: '123',
 	})
 
 	beforeAll(async () => {
-		server = new ModelHTTPServer({
-			// log: 'debug',
-			listen: { port: 3001 },
+		inferenceServer = new InferenceServer({
+			log: 'debug',
 			concurrency: 2,
 			models: {
 				[embeddingsModel]: {
@@ -269,11 +274,15 @@ suite('OpenAI API (gpt4all)', () => {
 				}
 			},
 		})
-		await server.start()
+		
+		await inferenceServer.start()
+		webServer = createExpressServer(inferenceServer)
+		webServer.listen(3001)
 	})
 
 	afterAll(async () => {
-		await server.stop()
+		await inferenceServer.stop()
+		webServer.close()
 	})
 
 	runOpenAITests(openai)

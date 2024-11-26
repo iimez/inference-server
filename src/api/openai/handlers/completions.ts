@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { OpenAI } from 'openai'
 import type { InferenceServer } from '#package/server.js'
-import { TextCompletionRequest } from '#package/types/index.js'
+import { TextCompletionParams } from '#package/types/index.js'
 import { parseJSONRequestBody } from '#package/api/parseJSONRequestBody.js'
 import { omitEmptyValues } from '#package/lib/util.js'
 import { finishReasonMap } from '../enums.js'
@@ -78,11 +78,10 @@ export function createCompletionHandler(inferenceServer: InferenceServer) {
 				stop = [stop]
 			}
 
-			const completionReq = omitEmptyValues<TextCompletionRequest>({
+			const completionReq = omitEmptyValues<TextCompletionParams>({
 				model: args.model,
 				prompt: args.prompt as string,
 				temperature: args.temperature ? args.temperature : undefined,
-				stream: args.stream ? Boolean(args.stream) : false,
 				maxTokens: args.max_tokens ? args.max_tokens : undefined,
 				seed: args.seed ? args.seed : undefined,
 				stop,
@@ -106,7 +105,8 @@ export function createCompletionHandler(inferenceServer: InferenceServer) {
 				completionReq,
 				controller.signal,
 			)
-			const task = instance.processTextCompletionTask(completionReq, {
+			const task = instance.processTextCompletionTask({
+				...completionReq,
 				signal: controller.signal,
 				onChunk: (chunk) => {
 					if (args.stream) {

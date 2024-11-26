@@ -3,7 +3,7 @@ import type { OpenAI } from 'openai'
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions.js'
 import type { InferenceServer } from '#package/server.js'
 import {
-	ChatCompletionRequest,
+	ChatCompletionParams,
 	ToolDefinition,
 	ChatMessage,
 	MessageContentPart,
@@ -221,11 +221,11 @@ export function createChatCompletionHandler(inferenceServer: InferenceServer) {
 			}
 			
 			const messages = await prepareIncomingMessages(args.messages)
-			const completionReq = omitEmptyValues<ChatCompletionRequest>({
+			const completionReq = omitEmptyValues<ChatCompletionParams>({
 				model: args.model,
 				messages,
 				temperature: args.temperature ? args.temperature : undefined,
-				stream: args.stream ? Boolean(args.stream) : false,
+				// stream: args.stream ? Boolean(args.stream) : false,
 				maxTokens: args.max_tokens ? args.max_tokens : undefined,
 				seed: args.seed ? args.seed : undefined,
 				stop,
@@ -245,6 +245,7 @@ export function createChatCompletionHandler(inferenceServer: InferenceServer) {
 					: undefined,
 				minP: args.min_p ? args.min_p : undefined,
 				topK: args.top_k ? args.top_k : undefined,
+
 			})
 			const { instance, release } = await inferenceServer.requestInstance(
 				completionReq,
@@ -254,7 +255,8 @@ export function createChatCompletionHandler(inferenceServer: InferenceServer) {
 			if (ssePing) {
 				clearInterval(ssePing)
 			}
-			const task = instance.processChatCompletionTask(completionReq, {
+			const task = instance.processChatCompletionTask({
+				...completionReq,
 				signal: controller.signal,
 				onChunk: (chunk) => {
 					if (args.stream) {
@@ -279,9 +281,7 @@ export function createChatCompletionHandler(inferenceServer: InferenceServer) {
 					}
 				},
 			})
-
 			const result = await task.result
-
 			release()
 
 			if (args.stream) {

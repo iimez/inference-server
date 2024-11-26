@@ -22,7 +22,6 @@ import {
 	GbnfJsonSchema,
 	ChatSessionModelFunction,
 	createModelDownloader,
-	readGgufFileInfo,
 	GgufFileInfo,
 	LlamaJsonSchemaGrammar,
 	LLamaChatContextShiftOptions,
@@ -33,19 +32,21 @@ import { StopGenerationTrigger } from 'node-llama-cpp/dist/utils/StopGenerationD
 import {
 	EngineChatCompletionResult,
 	EngineTextCompletionResult,
-	EngineTextCompletionArgs,
-	EngineChatCompletionArgs,
 	EngineContext,
 	ToolDefinition,
 	ToolCallResultMessage,
 	AssistantMessage,
-	EngineEmbeddingArgs,
 	EngineEmbeddingResult,
 	FileDownloadProgress,
 	ModelConfig,
-	TextCompletionParams,
 	TextCompletionGrammar,
 	ChatMessage,
+	EngineTaskContext,
+	EngineTextCompletionTaskContext,
+	TextCompletionParamsBase,
+	ChatCompletionTaskArgs,
+	TextCompletionTaskArgs,
+	EmbeddingTaskArgs,
 } from '#package/types/index.js'
 import { LogLevels } from '#package/lib/logger.js'
 import { flattenMessageTextContent } from '#package/lib/flattenMessageTextContent.js'
@@ -73,12 +74,11 @@ export interface NodeLlamaCppModelMeta {
 	gguf: GgufFileInfo
 }
 
-
 export interface NodeLlamaCppModelConfig extends ModelConfig {
 	location: string
 	grammars?: Record<string, TextCompletionGrammar>
 	sha256?: string
-	completionDefaults?: TextCompletionParams
+	completionDefaults?: TextCompletionParamsBase
 	initialMessages?: ChatMessage[]
 	prefix?: string
 	tools?: {
@@ -236,7 +236,7 @@ export async function createInstance({ config, log }: EngineContext<NodeLlamaCpp
 		lastEvaluation: undefined,
 		completion: undefined,
 		contextSequence: context.getSequence(),
-		chatWrapper: config.chatWrapper 
+		chatWrapper: config.chatWrapper,
 	}
 
 	if (config.initialMessages) {
@@ -297,13 +297,14 @@ export async function disposeInstance(instance: NodeLlamaCppInstance) {
 }
 
 export async function processChatCompletionTask(
-	{ request, config, resetContext, log, onChunk }: EngineChatCompletionArgs<NodeLlamaCppModelConfig>,
-	instance: NodeLlamaCppInstance,
+	task: ChatCompletionTaskArgs,
+	ctx: EngineTextCompletionTaskContext<NodeLlamaCppInstance, NodeLlamaCppModelConfig, NodeLlamaCppModelMeta>,
 	signal?: AbortSignal,
 ): Promise<EngineChatCompletionResult> {
+	const { instance, resetContext, config, log } = ctx
 	if (!instance.chat || resetContext) {
 		log(LogLevels.debug, 'Recreating chat context', {
-			resetContext,
+			resetContext: resetContext,
 			willDisposeChat: !!instance.chat,
 		})
 		// if context reset is requested, dispose the chat instance
@@ -329,7 +330,7 @@ export async function processChatCompletionTask(
 		// reset state and reingest the conversation history
 		instance.lastEvaluation = undefined
 		instance.pendingFunctionCalls = {}
-		instance.chatHistory = createChatMessageArray(request.messages)
+		instance.chatHistory = createChatMessageArray(task.messages)
 		// drop last user message. its gonna be added later, after resolved function calls
 		if (instance.chatHistory[instance.chatHistory.length - 1].type === 'user') {
 			instance.chatHistory.pop()
@@ -338,13 +339,13 @@ export async function processChatCompletionTask(
 
 	// set additional stop generation triggers for this completion
 	const customStopTriggers: StopGenerationTrigger[] = []
-	const stopTrigger = request.stop ?? config.completionDefaults?.stop
+	const stopTrigger = task.stop ?? config.completionDefaults?.stop
 	if (stopTrigger) {
 		customStopTriggers.push(...stopTrigger.map((t) => [t]))
 	}
 	// setting up logit/token bias dictionary
 	let tokenBias: TokenBias | undefined
-	const completionTokenBias = request.tokenBias ?? config.completionDefaults?.tokenBias
+	const completionTokenBias = task.tokenBias ?? config.completionDefaults?.tokenBias
 	if (completionTokenBias) {
 		tokenBias = new TokenBias(instance.model.tokenizer)
 		for (const key in completionTokenBias) {
@@ -361,15 +362,15 @@ export async function processChatCompletionTask(
 	// setting up available function definitions
 	const functionDefinitions: Record<string, ToolDefinition> = {
 		...config.tools?.definitions,
-		...request.tools?.definitions,
+		...task.tools?.definitions,
 	}
 
 	// see if the user submitted any function call results
-	const maxParallelCalls = request.tools?.maxParallelCalls ?? config.tools?.maxParallelCalls
+	const maxParallelCalls = task.tools?.maxParallelCalls ?? config.tools?.maxParallelCalls
 	const supportsParallelFunctionCalling =
 		instance.chat.chatWrapper.settings.functions.parallelism != null || !!maxParallelCalls
 	const resolvedFunctionCalls = []
-	const functionCallResultMessages = request.messages.filter((m) => m.role === 'tool') as ToolCallResultMessage[]
+	const functionCallResultMessages = task.messages.filter((m) => m.role === 'tool') as ToolCallResultMessage[]
 	for (const message of functionCallResultMessages) {
 		if (!instance.pendingFunctionCalls[message.callId]) {
 			log(LogLevels.warn, `Received function result for non-existing call id "${message.callId}`)
@@ -406,7 +407,7 @@ export async function processChatCompletionTask(
 
 	// add the new user message to the chat history
 	let assistantPrefill: string = ''
-	const lastMessage = request.messages[request.messages.length - 1]
+	const lastMessage = task.messages[task.messages.length - 1]
 	if (lastMessage.role === 'user' && lastMessage.content) {
 		const newUserText = flattenMessageTextContent(lastMessage.content)
 		if (newUserText) {
@@ -429,11 +430,11 @@ export async function processChatCompletionTask(
 	let inputGrammar: LlamaGrammar | undefined
 	let inputFunctions: Record<string, ChatSessionModelFunction> | undefined
 
-	if (request.grammar) {
-		if (!instance.grammars[request.grammar]) {
-			throw new Error(`Grammar "${request.grammar}" not found.`)
+	if (task.grammar) {
+		if (!instance.grammars[task.grammar]) {
+			throw new Error(`Grammar "${task.grammar}" not found.`)
 		}
-		inputGrammar = instance.grammars[request.grammar]
+		inputGrammar = instance.grammars[task.grammar]
 	} else if (Object.keys(functionDefinitions).length > 0) {
 		inputFunctions = {}
 		for (const functionName in functionDefinitions) {
@@ -467,7 +468,7 @@ export async function processChatCompletionTask(
 	const functionsOrGrammar = inputFunctions
 		? {
 				functions: { ...inputFunctions }, // clone the dict because it gets mutated below
-				documentFunctionParams: request.tools?.documentParams ?? config.tools?.documentParams,
+				documentFunctionParams: task.tools?.documentParams ?? config.tools?.documentParams,
 				maxParallelFunctionCalls: maxParallelCalls,
 				onFunctionCall: (functionCall: LlamaChatResponseFunctionCall<any>) => {
 					// log(LogLevels.debug, 'Called function', functionCall)
@@ -487,20 +488,20 @@ export async function processChatCompletionTask(
 		} = await instance.chat.generateResponse(newChatHistory, {
 			signal,
 			stopOnAbortSignal: true, // this will make aborted completions resolve (with a partial response)
-			maxTokens: request.maxTokens ?? defaults.maxTokens,
-			temperature: request.temperature ?? defaults.temperature,
-			topP: request.topP ?? defaults.topP,
-			topK: request.topK ?? defaults.topK,
-			minP: request.minP ?? defaults.minP,
-			seed: request.seed ?? config.completionDefaults?.seed ?? getRandomNumber(0, 1000000),
+			maxTokens: task.maxTokens ?? defaults.maxTokens,
+			temperature: task.temperature ?? defaults.temperature,
+			topP: task.topP ?? defaults.topP,
+			topK: task.topK ?? defaults.topK,
+			minP: task.minP ?? defaults.minP,
+			seed: task.seed ?? config.completionDefaults?.seed ?? getRandomNumber(0, 1000000),
 			tokenBias,
 			customStopTriggers,
 			trimWhitespaceSuffix: false,
 			...functionsOrGrammar,
 			repeatPenalty: {
-				lastTokens: request.repeatPenaltyNum ?? defaults.repeatPenaltyNum,
-				frequencyPenalty: request.frequencyPenalty ?? defaults.frequencyPenalty,
-				presencePenalty: request.presencePenalty ?? defaults.presencePenalty,
+				lastTokens: task.repeatPenaltyNum ?? defaults.repeatPenaltyNum,
+				frequencyPenalty: task.frequencyPenalty ?? defaults.frequencyPenalty,
+				presencePenalty: task.presencePenalty ?? defaults.presencePenalty,
 			},
 			contextShift: {
 				strategy: config.contextShiftStrategy,
@@ -512,8 +513,8 @@ export async function processChatCompletionTask(
 			},
 			onToken: (tokens) => {
 				const text = instance.model.detokenize(tokens)
-				if (onChunk) {
-					onChunk({
+				if (task.onChunk) {
+					task.onChunk({
 						tokens,
 						text,
 					})
@@ -678,11 +679,12 @@ export async function processChatCompletionTask(
 }
 
 export async function processTextCompletionTask(
-	{ request, config, resetContext, log, onChunk }: EngineTextCompletionArgs<NodeLlamaCppModelConfig>,
-	instance: NodeLlamaCppInstance,
+	task: TextCompletionTaskArgs,
+	ctx: EngineTextCompletionTaskContext<NodeLlamaCppInstance, NodeLlamaCppModelConfig, NodeLlamaCppModelMeta>,
 	signal?: AbortSignal,
 ): Promise<EngineTextCompletionResult> {
-	if (!request.prompt) {
+	const { instance, resetContext, config, log } = ctx
+	if (!task.prompt) {
 		throw new Error('Prompt is required for text completion.')
 	}
 
@@ -721,31 +723,31 @@ export async function processTextCompletionTask(
 	}
 
 	const stopGenerationTriggers: StopGenerationTrigger[] = []
-	const stopTrigger = request.stop ?? config.completionDefaults?.stop
+	const stopTrigger = task.stop ?? config.completionDefaults?.stop
 	if (stopTrigger) {
 		stopGenerationTriggers.push(...stopTrigger.map((t) => [t]))
 	}
 
 	const initialTokenMeterState = contextSequence.tokenMeter.getState()
 	const defaults = config.completionDefaults ?? {}
-	const result = await completion.generateCompletionWithMeta(request.prompt, {
-		maxTokens: request.maxTokens ?? defaults.maxTokens,
-		temperature: request.temperature ?? defaults.temperature,
-		topP: request.topP ?? defaults.topP,
-		topK: request.topK ?? defaults.topK,
-		minP: request.minP ?? defaults.minP,
+	const result = await completion.generateCompletionWithMeta(task.prompt, {
+		maxTokens: task.maxTokens ?? defaults.maxTokens,
+		temperature: task.temperature ?? defaults.temperature,
+		topP: task.topP ?? defaults.topP,
+		topK: task.topK ?? defaults.topK,
+		minP: task.minP ?? defaults.minP,
 		repeatPenalty: {
-			lastTokens: request.repeatPenaltyNum ?? defaults.repeatPenaltyNum,
-			frequencyPenalty: request.frequencyPenalty ?? defaults.frequencyPenalty,
-			presencePenalty: request.presencePenalty ?? defaults.presencePenalty,
+			lastTokens: task.repeatPenaltyNum ?? defaults.repeatPenaltyNum,
+			frequencyPenalty: task.frequencyPenalty ?? defaults.frequencyPenalty,
+			presencePenalty: task.presencePenalty ?? defaults.presencePenalty,
 		},
 		signal: signal,
 		customStopTriggers: stopGenerationTriggers.length ? stopGenerationTriggers : undefined,
-		seed: request.seed ?? config.completionDefaults?.seed ?? getRandomNumber(0, 1000000),
+		seed: task.seed ?? config.completionDefaults?.seed ?? getRandomNumber(0, 1000000),
 		onToken: (tokens) => {
 			const text = instance.model.detokenize(tokens)
-			if (onChunk) {
-				onChunk({
+			if (task.onChunk) {
+				task.onChunk({
 					tokens,
 					text,
 				})
@@ -765,18 +767,19 @@ export async function processTextCompletionTask(
 }
 
 export async function processEmbeddingTask(
-	{ request, config, log }: EngineEmbeddingArgs<NodeLlamaCppModelConfig>,
-	instance: NodeLlamaCppInstance,
+	task: EmbeddingTaskArgs,
+	ctx: EngineTaskContext<NodeLlamaCppInstance, NodeLlamaCppModelConfig, NodeLlamaCppModelMeta>,
 	signal?: AbortSignal,
 ): Promise<EngineEmbeddingResult> {
-	if (!request.input) {
+	const { instance, config, log } = ctx
+	if (!task.input) {
 		throw new Error('Input is required for embedding.')
 	}
 	const texts: string[] = []
-	if (typeof request.input === 'string') {
-		texts.push(request.input)
-	} else if (Array.isArray(request.input)) {
-		for (const input of request.input) {
+	if (typeof task.input === 'string') {
+		texts.push(task.input)
+	} else if (Array.isArray(task.input)) {
+		for (const input of task.input) {
 			if (typeof input === 'string') {
 				texts.push(input)
 			} else if (input.type === 'text') {

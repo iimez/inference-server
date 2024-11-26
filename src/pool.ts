@@ -4,7 +4,7 @@ import EventEmitter3 from 'eventemitter3'
 import { ModelInstance } from '#package/instance.js'
 import {
 	ModelConfig,
-	InferenceRequest,
+	InferenceParams,
 	ModelInstanceRequest,
 	ModelEngine,
 } from '#package/types/index.js'
@@ -560,7 +560,7 @@ export class ModelPool extends EventEmitter3<ModelPoolEvent> {
 
 	// requests a model instance from the pool
 	async requestInstance(
-		incomingRequest: InferenceRequest,
+		params: InferenceParams,
 		signal?: AbortSignal,
 	): Promise<ModelInstanceHandle> {
 		if (this.shutdownController.signal.aborted) {
@@ -568,7 +568,7 @@ export class ModelPool extends EventEmitter3<ModelPoolEvent> {
 		}
 		const requestSequence = this.createRequestSequence()
 		const request = {
-			...incomingRequest,
+			...params,
 			sequence: requestSequence,
 			abortController: new AbortController(),
 		}

@@ -5,24 +5,22 @@ import { ModelInstance } from '#package/instance.js'
 import { ModelStore, StoredModel } from '#package/store.js'
 import {
 	ModelOptions,
-	InferenceRequest,
-	CompletionProcessingOptions,
-	ChatCompletionRequest,
-	EmbeddingRequest,
-	ProcessingOptions,
-	TextCompletionRequest,
+	InferenceParams,
 	ModelEngine,
-	ImageToTextRequest,
-	TextToSpeechRequest,
-	TextToSpeechProcessingOptions,
-	SpeechToTextRequest,
-	SpeechToTextProcessingOptions,
 	BuiltInModelOptions,
 	CustomEngineModelOptions,
 	ModelConfigBase,
-	TextToImageRequest,
-	ImageToImageRequest,
-	ObjectRecognitionRequest,
+	InferenceTaskArgs,
+	ChatCompletionTaskArgs,
+	TextCompletionTaskArgs,
+	InferenceTask,
+	EmbeddingTaskArgs,
+	ImageToTextTaskArgs,
+	TextToSpeechTaskArgs,
+	SpeechToTextTaskArgs,
+	TextToImageTaskArgs,
+	ImageToImageTaskArgs,
+	ObjectDetectionTaskArgs,
 } from '#package/types/index.js'
 import { Logger, LogLevel, createSublogger, LogLevels } from '#package/lib/logger.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
@@ -238,14 +236,13 @@ export class InferenceServer {
 	}
 	/**
 	 * Requests an available model instance from the pool for a specific task.
-	 * There is not much need to call this method unless you are creating a custom task pipeline.
-	 * This method is called internally by the processXTask methods.
-	 * @param {InferenceRequest} request - The inference request details.
-	 * @param {AbortSignal} [signal] - Optional signal to cancel the request.
-	 * @returns {Promise<ModelInstance>} The requested model instance.
+	 * Use this for manual control over when to release the instance back to the pool.
+	 * @param {InferenceParams} args - The inference task arguments.
+	 * @param {AbortSignal} [signal] - An optional signal to abort the request.
+	 * @returns {Promise<ModelInstance>} A model instance that can fulfill the task.
 	 */
-	async requestInstance(request: InferenceRequest, signal?: AbortSignal) {
-		return this.pool.requestInstance(request, signal)
+	requestInstance(args: InferenceParams, signal?: AbortSignal) {
+		return this.pool.requestInstance(args, signal)
 	}
 
 	// gets called by the pool right before a new instance is created
@@ -272,76 +269,109 @@ export class InferenceServer {
 			await modelReady
 		}
 	}
-
-	async processChatCompletionTask(args: ChatCompletionRequest, options?: CompletionProcessingOptions) {
+	
+	async processTask(args: InferenceTaskArgs) {
 		const lock = await this.requestInstance(args)
-		const task = lock.instance.processChatCompletionTask(args, options)
+		let task: InferenceTask
+		
+		switch (args.task) {
+			case 'text-completion':
+				task = await lock.instance.processTextCompletionTask(args as TextCompletionTaskArgs)
+				break
+			case 'chat-completion':
+				task = lock.instance.processChatCompletionTask(args as ChatCompletionTaskArgs)
+				break
+			case 'embedding':
+				task = lock.instance.processEmbeddingTask(args as EmbeddingTaskArgs)
+				break
+			case 'image-to-text':
+				task = lock.instance.processImageToTextTask(args as ImageToTextTaskArgs)
+				break
+			case 'text-to-speech':
+				task = lock.instance.processTextToSpeechTask(args as TextToSpeechTaskArgs)
+				break
+			case 'speech-to-text':
+				task = lock.instance.processSpeechToTextTask(args as SpeechToTextTaskArgs)
+				break
+			case 'text-to-image':
+				task = lock.instance.processTextToImageTask(args as TextToImageTaskArgs)
+				break
+			case 'image-to-image':
+				task = lock.instance.processImageToImageTask(args as ImageToImageTaskArgs)
+				break
+			case 'object-detection':
+				task = lock.instance.processObjectDetectionTask(args as ObjectDetectionTaskArgs)
+				break
+			default:
+				// @ts-expect-error
+				throw new Error(`Unknown task type: ${args.task}`)
+		}
+
 		const result = await task.result
 		await lock.release()
 		return result
 	}
 	
-	async processTextCompletionTask(args: TextCompletionRequest, options?: CompletionProcessingOptions) {
-		const lock = await this.requestInstance(args)
-		const task = lock.instance.processTextCompletionTask(args, options)
-		const result = await task.result
-		await lock.release()
-		return result
+	processChatCompletionTask(args: ChatCompletionTaskArgs) {
+		return this.processTask({
+			task: 'chat-completion',
+			...args,
+		})
 	}
 	
-	async processEmbeddingTask(args: EmbeddingRequest, options?: ProcessingOptions) {
-		const lock = await this.requestInstance(args)
-		const task = lock.instance.processEmbeddingTask(args, options)
-		const result = await task.result
-		await lock.release()
-		return result
-	}
-	
-	async processImageToTextTask(args: ImageToTextRequest, options?: ProcessingOptions) {
-		const lock = await this.requestInstance(args)
-		const task = lock.instance.processImageToTextTask(args, options)
-		const result = await task.result
-		await lock.release()
-		return result
+	processTextCompletionTask(args: TextCompletionTaskArgs) {
+		return this.processTask({
+			task: 'text-completion',
+			...args,
+		})
 	}
 
-	async processSpeechToTextTask(args: SpeechToTextRequest, options?: SpeechToTextProcessingOptions) {
-		const lock = await this.requestInstance(args)
-		const task = lock.instance.processSpeechToTextTask(args, options)
-		const result = await task.result
-		await lock.release()
-		return result
+	processEmbeddingTask(args: EmbeddingTaskArgs) {
+		return this.processTask({
+			task: 'embedding',
+			...args,
+		})
 	}
 
-	async processTextToSpeechTask(args: TextToSpeechRequest, options?: TextToSpeechProcessingOptions) {
-		const lock = await this.requestInstance(args)
-		const task = lock.instance.processTextToSpeechTask(args, options)
-		const result = await task.result
-		await lock.release()
-		return result
+	processImageToTextTask(args: ImageToTextTaskArgs) {
+		return this.processTask({
+			task: 'image-to-text',
+			...args,
+		})
 	}
 
-	async processTextToImageTask(args: TextToImageRequest, options?: ProcessingOptions) {
-		const lock = await this.requestInstance(args)
-		const task = lock.instance.processTextToImageTask(args, options)
-		const result = await task.result
-		await lock.release()
-		return result
-	}
-	async processImageToImageTask(args: ImageToImageRequest, options?: ProcessingOptions) {
-		const lock = await this.requestInstance(args)
-		const task = lock.instance.processImageToImageTask(args, options)
-		const result = await task.result
-		await lock.release()
-		return result
+	processSpeechToTextTask(args: SpeechToTextTaskArgs) {
+		return this.processTask({
+			task: 'speech-to-text',
+			...args,
+		})
 	}
 
-	async processObjectRecognitionTask(args: ObjectRecognitionRequest, options?: ProcessingOptions) {
-		const lock = await this.requestInstance(args)
-		const task = lock.instance.processObjectRecognitionTask(args, options)
-		const result = await task.result
-		await lock.release()
-		return result
+	 processTextToSpeechTask(args: TextToSpeechTaskArgs) {
+		return this.processTask({
+			task: 'text-to-speech',
+			...args,
+		})
+	}
+
+	 processTextToImageTask(args: TextToImageTaskArgs) {
+		return this.processTask({
+			task: 'text-to-image',
+			...args,
+		})
+	}
+	 processImageToImageTask(args: ImageToImageTaskArgs) {
+		return this.processTask({
+			task: 'image-to-image',
+			...args,
+		})
+	}
+
+	processObjectDetectionTask(args: ObjectDetectionTaskArgs) {
+		return this.processTask({
+			task: 'object-detection',
+			...args,
+		})
 	}
 
 	/**

@@ -4,20 +4,22 @@ import {
 	EngineContext,
 	FileDownloadProgress,
 	ModelConfig,
-	EngineImageToTextArgs,
-	EngineSpeechToTextArgs,
-	EngineTextToSpeechArgs,
 	EngineTextCompletionResult,
-	EngineTextCompletionArgs,
-	EngineEmbeddingArgs,
 	EngineEmbeddingResult,
 	ImageEmbeddingInput,
 	TransformersJsModel,
 	TextEmbeddingInput,
 	TransformersJsSpeechModel,
-	EngineObjectRecognitionArgs,
-	ObjectRecognitionResult,
 	SpeakerEmbeddings,
+	TextCompletionTaskArgs,
+	EngineTextCompletionTaskContext,
+	EmbeddingTaskArgs,
+	EngineTaskContext,
+	ImageToTextTaskArgs,
+	SpeechToTextTaskArgs,
+	TextToSpeechTaskArgs,
+	ObjectDetection,
+	ObjectDetectionTaskArgs,
 } from '#package/types/index.js'
 import {
 	env,
@@ -477,11 +479,12 @@ export async function disposeInstance(instance: TransformersJsInstance) {
 // Generation Args https://github.com/huggingface/transformers.js/blob/705cfc456f8b8f114891e1503b0cdbaa97cf4b11/src/generation/configuration_utils.js#L11
 // default Model.generate https://github.com/huggingface/transformers.js/blob/705cfc456f8b8f114891e1503b0cdbaa97cf4b11/src/models.js#L1378
 export async function processTextCompletionTask(
-	{ request, config, log, onChunk }: EngineTextCompletionArgs<TransformersJsModelConfig>,
-	instance: TransformersJsInstance,
+	task: TextCompletionTaskArgs,
+	ctx: EngineTextCompletionTaskContext<TransformersJsInstance, TransformersJsModelConfig>,
 	signal?: AbortSignal,
 ): Promise<EngineTextCompletionResult> {
-	if (!request.prompt) {
+	const { instance } = ctx
+	if (!task.prompt) {
 		throw new Error('Prompt is required for text completion.')
 	}
 	if (!(instance.primary?.tokenizer && instance.primary?.model)) {
@@ -491,7 +494,7 @@ export async function processTextCompletionTask(
 		throw new Error('Text model does not support generation.')
 	}
 	instance.primary.tokenizer.padding_side = 'left'
-	const inputs = instance.primary.tokenizer(request.prompt, {
+	const inputs = instance.primary.tokenizer(task.prompt, {
 		add_special_tokens: false,
 		padding: true,
 		truncation: true,
@@ -512,9 +515,9 @@ export async function processTextCompletionTask(
 	
 	const streamer = new TextStreamer(instance.primary.tokenizer, {
 		callback_function: (output: string) => {
-			if (onChunk && output !== request.prompt) {
+			if (task.onChunk && output !== task.prompt) {
 				const tokens = instance.primary!.tokenizer!.encode(output)
-				onChunk({ text: output, tokens: tokens })
+				task.onChunk({ text: output, tokens: tokens })
 			}
 		},
 	})
@@ -525,11 +528,11 @@ export async function processTextCompletionTask(
 		output_scores: true, // TODO currently no effect
 		return_dict_in_generate: true,
 		// common params
-		max_new_tokens: request.maxTokens ?? 128,
-		repetition_penalty: request.repeatPenalty ?? 2.0, // 1 = no penalty
-		temperature: request.temperature ?? 1.0,
-		top_k: request.topK ?? 50,
-		top_p: request.topP ?? 1.0,
+		max_new_tokens: task.maxTokens ?? 128,
+		repetition_penalty: task.repeatPenalty ?? 2.0, // 1 = no penalty
+		temperature: task.temperature ?? 1.0,
+		top_k: task.topK ?? 50,
+		top_p: task.topP ?? 1.0,
 		num_beams: 1,
 		// num_return_sequences: 2, // TODO https://github.com/huggingface/transformers.js/issues/1007
 		// eos_token_id: stopTokens[0], // TODO implement stop
@@ -555,7 +558,7 @@ export async function processTextCompletionTask(
 		skip_special_tokens: true,
 		clean_up_tokenization_spaces: true,
 	})
-	const generatedText = outputTexts[0].slice(request.prompt.length)
+	const generatedText = outputTexts[0].slice(task.prompt.length)
 	// @ts-ignore
 	const outputTokenCount = outputs.sequences.tolist().reduce((acc, sequence) => acc + sequence.length, 0)
 	const inputTokenCount = inputs.input_ids.size
@@ -572,14 +575,15 @@ export async function processTextCompletionTask(
 // see https://github.com/xenova/transformers.js/blob/v3/src/utils/tensor.js
 // https://github.com/xenova/transformers.js/blob/v3/src/pipelines.js#L1284
 export async function processEmbeddingTask(
-	{ request, config }: EngineEmbeddingArgs<TransformersJsModelConfig>,
-	instance: TransformersJsInstance,
+	task: EmbeddingTaskArgs,
+	ctx: EngineTaskContext<TransformersJsInstance, TransformersJsModelConfig>,
 	signal?: AbortSignal,
 ): Promise<EngineEmbeddingResult> {
-	if (!request.input) {
+	const { instance, config } = ctx
+	if (!task.input) {
 		throw new Error('Input is required for embedding.')
 	}
-	const inputs = Array.isArray(request.input) ? request.input : [request.input]
+	const inputs = Array.isArray(task.input) ? task.input : [task.input]
 	const normalizedInputs: Array<TextEmbeddingInput | ImageEmbeddingInput> = inputs.map((input) => {
 		if (typeof input === 'string') {
 			return {
@@ -655,11 +659,11 @@ export async function processEmbeddingTask(
 			result = modelOutputs.last_hidden_state ?? modelOutputs.logits ?? modelOutputs.image_embeds
 		}
 
-		if (request.pooling) {
-			result = applyPooling(result, request.pooling, modelInputs)
+		if (task.pooling) {
+			result = applyPooling(result, task.pooling, modelInputs)
 		}
-		if (request.dimensions && result.data.length > request.dimensions) {
-			embeddings.push(truncateDimensions(result, request.dimensions))
+		if (task.dimensions && result.data.length > task.dimensions) {
+			embeddings.push(truncateDimensions(result, task.dimensions))
 		} else {
 			embeddings.push(result.data)
 		}
@@ -672,14 +676,15 @@ export async function processEmbeddingTask(
 }
 
 export async function processImageToTextTask(
-	{ request, config, log }: EngineImageToTextArgs,
-	instance: TransformersJsInstance,
+	task: ImageToTextTaskArgs,
+	ctx: EngineTaskContext<TransformersJsInstance, TransformersJsModelConfig>,
 	signal?: AbortSignal,
 ) {
-	if (!request.image) {
+	const { instance } = ctx
+	if (!task.image) {
 		throw new Error('No image provided')
 	}
-	const image = request.image
+	const image = task.image
 	const rawImage = new RawImage(
 		new Uint8ClampedArray(image.data),
 		image.width,
@@ -699,14 +704,14 @@ export async function processImageToTextTask(
 		throw new Error('Model does not support generation')
 	}
 	let textInputs = {}
-	if (request.prompt) {
-		textInputs = modelComponents!.tokenizer(request.prompt)
+	if (task.prompt) {
+		textInputs = modelComponents!.tokenizer(task.prompt)
 	}
 	const imageInputs = await modelComponents.processor(rawImage)
 	const outputTokens = await modelComponents.model.generate({
 		...textInputs,
 		...imageInputs,
-		max_new_tokens: request.maxTokens ?? 128,
+		max_new_tokens: task.maxTokens ?? 128,
 	})
 	// @ts-ignore
 	const outputText = modelComponents.tokenizer.batch_decode(outputTokens, {
@@ -722,11 +727,12 @@ export async function processImageToTextTask(
 // https://huggingface.co/docs/transformers.js/guides/node-audio-processing
 // https://github.com/xenova/transformers.js/tree/v3/examples/node-audio-processing
 export async function processSpeechToTextTask(
-	{ request, onChunk }: EngineSpeechToTextArgs,
-	instance: TransformersJsInstance,
+	task: SpeechToTextTaskArgs,
+	ctx: EngineTaskContext<TransformersJsInstance, TransformersJsModelConfig>,
 	signal?: AbortSignal,
 ) {
-	if (!request.audio) {
+	const { instance } = ctx
+	if (!task.audio) {
 		throw new Error('No audio provided')
 	}
 	const modelComponents = instance.speech || instance.primary
@@ -737,17 +743,17 @@ export async function processSpeechToTextTask(
 		skip_prompt: true,
 		// skip_special_tokens: true,
 		callback_function: (output: any) => {
-			if (onChunk) {
-				onChunk({ text: output })
+			if (task.onChunk) {
+				task.onChunk({ text: output })
 			}
 		},
 	})
 
-	let inputSamples = request.audio.samples
+	let inputSamples = task.audio.samples
 
-	if (request.audio.sampleRate !== 16000) {
-		inputSamples = await resampleAudioBuffer(request.audio.samples, {
-			inputSampleRate: request.audio.sampleRate,
+	if (task.audio.sampleRate !== 16000) {
+		inputSamples = await resampleAudioBuffer(task.audio.samples, {
+			inputSampleRate: task.audio.sampleRate,
 			outputSampleRate: 16000,
 			nChannels: 1,
 		})
@@ -760,8 +766,8 @@ export async function processSpeechToTextTask(
 
 	const outputs = await modelComponents.model.generate({
 		...inputs,
-		max_new_tokens: request.maxTokens ?? 128,
-		language: request.language ?? 'en',
+		max_new_tokens: task.maxTokens ?? 128,
+		language: task.language ?? 'en',
 		streamer,
 	})
 
@@ -777,10 +783,11 @@ export async function processSpeechToTextTask(
 
 // TextGenerationPipeline https://github.com/huggingface/transformers.js/blob/e129c47c65a049173f35e6263fd8d9f660dfc1a7/src/pipelines.js#L2663
 export async function processTextToSpeechTask(
-	{ request, config, log }: EngineTextToSpeechArgs,
-	instance: TransformersJsInstance,
+	task: TextToSpeechTaskArgs,
+	ctx: EngineTaskContext<TransformersJsInstance, TransformersJsModelConfig>,
 	signal?: AbortSignal,
 ) {
+	const { instance } = ctx
 	const modelComponents = instance.speech || instance.primary
 	if (!modelComponents?.model || !modelComponents?.tokenizer) {
 		throw new Error('No speech model loaded')
@@ -790,7 +797,7 @@ export async function processTextToSpeechTask(
 		throw new Error('The model does not support speech generation')
 	}
 
-	const encodedInputs = modelComponents.tokenizer(request.text, {
+	const encodedInputs = modelComponents.tokenizer(task.text, {
 		padding: true,
 		truncation: true,
 	})
@@ -805,10 +812,10 @@ export async function processTextToSpeechTask(
 		throw new Error('No speaker embeddings supplied')
 	}
 
-	if (request.voice) {
-		speakerEmbeddings = modelComponents.speakerEmbeddings?.[request.voice]
+	if (task.voice) {
+		speakerEmbeddings = modelComponents.speakerEmbeddings?.[task.voice]
 		if (!speakerEmbeddings) {
-			throw new Error(`No speaker embeddings found for voice ${request.voice}`)
+			throw new Error(`No speaker embeddings found for voice ${task.voice}`)
 		}
 	}
 	const speakerEmbeddingsTensor = new Tensor('float32', speakerEmbeddings, [1, speakerEmbeddings.length])
@@ -833,15 +840,16 @@ export async function processTextToSpeechTask(
 
 // ObjectDetectionPipeline https://github.com/huggingface/transformers.js/blob/6bd45ac66a861f37f3f95b81ac4b6d796a4ee231/src/pipelines.js#L2336
 // ZeroShotObjectDetection https://github.com/huggingface/transformers.js/blob/6bd45ac66a861f37f3f95b81ac4b6d796a4ee231/src/pipelines.js#L2471
-export async function processObjectRecognitionTask(
-	{ request, config, log }: EngineObjectRecognitionArgs,
-	instance: TransformersJsInstance,
+export async function processObjectDetectionTask(
+	task: ObjectDetectionTaskArgs,
+	ctx: EngineTaskContext<TransformersJsInstance, TransformersJsModelConfig>,
 	signal?: AbortSignal,
 ) {
-	if (!request.image) {
+	const { instance } = ctx
+	if (!task.image) {
 		throw new Error('No image provided')
 	}
-	const image = request.image
+	const image = task.image
 	const rawImage = new RawImage(new Uint8ClampedArray(image.data), image.width, image.height, image.channels)
 
 	if (signal?.aborted) {
@@ -853,13 +861,13 @@ export async function processObjectRecognitionTask(
 		throw new Error('No model loaded')
 	}
 
-	const results: ObjectRecognitionResult[] = []
+	const results: ObjectDetection[] = []
 
-	if (request?.labels?.length) {
+	if (task?.labels?.length) {
 		if (!modelComponents.tokenizer || !modelComponents.processor) {
 			throw new Error('Model components not loaded.')
 		}
-		const labelInputs = modelComponents.tokenizer(request.labels, {
+		const labelInputs = modelComponents.tokenizer(task.labels, {
 			padding: true,
 			truncation: true,
 		})
@@ -872,14 +880,14 @@ export async function processObjectRecognitionTask(
 		// @ts-ignore
 		const processed = modelComponents.processor.feature_extractor.post_process_object_detection(
 			output,
-			request.threshold ?? 0.5,
+			task.threshold ?? 0.5,
 			[[image.height, image.width]],
 			true,
 		)[0]
 		for (let i = 0; i < processed.boxes.length; i++) {
 			results.push({
 				score: processed.scores[i],
-				label: request.labels[processed.classes[i]],
+				label: task.labels[processed.classes[i]],
 				box: {
 					x: processed.boxes[i][0],
 					y: processed.boxes[i][1],
@@ -895,7 +903,7 @@ export async function processObjectRecognitionTask(
 		// @ts-ignore
 		const processed = modelComponents.processor.feature_extractor.post_process_object_detection(
 			output,
-			request.threshold ?? 0.5,
+			task.threshold ?? 0.5,
 			[[image.height, image.width]],
 			null,
 			false,

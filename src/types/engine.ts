@@ -1,36 +1,47 @@
 import type { ModelPool } from '#package/pool.js'
 import type { ModelStore } from '#package/store.js'
 import type { Logger } from '#package/lib/logger.js'
-import type {
-	StableDiffusionWeightType,
-	StableDiffusionSamplingMethod,
-	StableDiffusionSchedule,
-} from '#package/engines/stable-diffusion-cpp/types.js'
+import type { StableDiffusionSamplingMethod } from '#package/engines/stable-diffusion-cpp/types.js'
+import { AssistantMessage, ChatMessage, CompletionFinishReason, ToolDefinition } from '#package/types/chat.js'
+
 import {
-	AssistantMessage,
-	ChatMessage,
-	CompletionFinishReason,
-	TextCompletionParams,
-	ToolDefinition,
-} from '#package/types/completions.js'
+	Image,
+	Audio,
+	ModelConfig,
+	ChatCompletionTaskArgs,
+	TextCompletionTaskArgs,
+	EmbeddingTaskArgs,
+	ImageToTextTaskArgs,
+	SpeechToTextTaskArgs,
+	TextToSpeechTaskArgs,
+	TextToImageTaskArgs,
+	ImageToImageTaskArgs,
+	ObjectDetectionTaskArgs,
+} from '#package/types/index.js'
 
-import { Image, Audio, ModelConfig } from '#package/types/index.js'
-
-export interface TextCompletionRequestBase extends TextCompletionParams {
-	model: string
-	stream?: boolean
+export interface TextCompletionParamsBase {
+	temperature?: number
+	maxTokens?: number
+	seed?: number
+	stop?: string[]
+	repeatPenalty?: number
+	repeatPenaltyNum?: number
+	frequencyPenalty?: number
+	presencePenalty?: number
+	grammar?: string
+	topP?: number
+	minP?: number
+	topK?: number
+	tokenBias?: Record<string, number>
 }
 
-export interface TextCompletionRequest extends TextCompletionRequestBase {
+export interface TextCompletionParams extends TextCompletionParamsBase {
+	model: string
 	prompt?: string
 }
 
-export interface CompletionChunk {
-	tokens: number[]
-	text: string
-}
-
-export interface ChatCompletionRequest extends TextCompletionRequestBase {
+export interface ChatCompletionParams extends TextCompletionParamsBase {
+	model: string
 	messages: ChatMessage[]
 	grammar?: string
 	tools?: {
@@ -52,21 +63,21 @@ export interface ImageEmbeddingInput {
 
 export type EmbeddingInput = TextEmbeddingInput | ImageEmbeddingInput | string
 
-export interface EmbeddingRequest {
+export interface EmbeddingParams {
 	model: string
 	input: EmbeddingInput | EmbeddingInput[]
 	dimensions?: number
 	pooling?: 'cls' | 'mean'
 }
 
-export interface ImageToTextRequest {
+export interface ImageToTextParams {
 	model: string
 	image: Image
 	prompt?: string
 	maxTokens?: number
 }
 
-export interface StableDiffusionRequest {
+export interface StableDiffusionParams {
 	negativePrompt?: string
 	guidance?: number
 	styleRatio?: number
@@ -78,7 +89,7 @@ export interface StableDiffusionRequest {
 	controlStrength?: number
 }
 
-export interface TextToImageRequest extends StableDiffusionRequest {
+export interface TextToImageParams extends StableDiffusionParams {
 	model: string
 	prompt: string
 	width?: number
@@ -86,7 +97,7 @@ export interface TextToImageRequest extends StableDiffusionRequest {
 	seed?: number
 }
 
-export interface ImageToImageRequest extends StableDiffusionRequest {
+export interface ImageToImageParams extends StableDiffusionParams {
 	model: string
 	image: Image
 	prompt: string
@@ -95,14 +106,14 @@ export interface ImageToImageRequest extends StableDiffusionRequest {
 	seed?: number
 }
 
-export interface ObjectRecognitionRequest {
+export interface ObjectDetectionParams {
 	model: string
 	image: Image
 	threshold?: number
 	labels?: string[]
 }
 
-export interface SpeechToTextRequest {
+export interface SpeechToTextParams {
 	model: string
 	audio: Audio
 	language?: string
@@ -110,91 +121,27 @@ export interface SpeechToTextRequest {
 	maxTokens?: number
 }
 
-export interface TextToSpeechRequest {
+export interface TextToSpeechParams {
 	model: string
 	text: string
 	voice?: string
 }
 
-export type InferenceRequest =
-	| TextCompletionRequest
-	| ChatCompletionRequest
-	| EmbeddingRequest
-	| ImageToTextRequest
-	| SpeechToTextRequest
+export type InferenceParams =
+	| TextCompletionParams
+	| ChatCompletionParams
+	| EmbeddingParams
+	| ImageToTextParams
+	| SpeechToTextParams
+	| TextToSpeechParams
+	| TextToImageParams
+	| ImageToImageParams
+	| ObjectDetectionParams
 
 export interface EngineContext<TModelConfig = ModelConfig, TModelMeta = unknown> {
 	config: TModelConfig
 	meta?: TModelMeta
 	log: Logger
-}
-
-export interface EngineTextCompletionArgs<TModelConfig = unknown, TModelMeta = unknown>
-	extends EngineContext<TModelConfig, TModelMeta> {
-	onChunk?: (chunk: CompletionChunk) => void
-	resetContext?: boolean
-	request: TextCompletionRequest
-}
-
-export interface EngineChatCompletionArgs<TModelConfig = unknown, TModelMeta = unknown>
-	extends EngineContext<TModelConfig, TModelMeta> {
-	onChunk?: (chunk: CompletionChunk) => void
-	resetContext?: boolean
-	request: ChatCompletionRequest
-}
-
-export interface EngineEmbeddingArgs<TModelConfig = unknown, TModelMeta = unknown>
-	extends EngineContext<TModelConfig, TModelMeta> {
-	request: EmbeddingRequest
-}
-
-export interface EngineObjectRecognitionArgs<TModelConfig = unknown, TModelMeta = unknown>
-	extends EngineContext<TModelConfig, TModelMeta> {
-	request: ObjectRecognitionRequest
-}
-
-export interface EngineImageToTextArgs<TModelConfig = unknown, TModelMeta = unknown>
-	extends EngineContext<TModelConfig, TModelMeta> {
-	request: ImageToTextRequest
-}
-
-export interface EngineTextToImageArgs<TModelConfig = unknown, TModelMeta = unknown>
-	extends EngineContext<TModelConfig, TModelMeta> {
-	request: TextToImageRequest
-}
-
-export interface EngineImageToImageArgs<TModelConfig = unknown, TModelMeta = unknown>
-	extends EngineContext<TModelConfig, TModelMeta> {
-	request: ImageToImageRequest
-}
-
-export interface EngineSpeechToTextArgs<TModelConfig = unknown, TModelMeta = unknown>
-	extends EngineContext<TModelConfig, TModelMeta> {
-	request: SpeechToTextRequest
-	onChunk?: (chunk: { text: string }) => void
-}
-
-export interface EngineTextToSpeechArgs<TModelConfig = unknown, TModelMeta = unknown>
-	extends EngineContext<TModelConfig, TModelMeta> {
-	request: TextToSpeechRequest
-	onChunk?: (chunk: { text: string }) => void
-}
-
-export interface ProcessingOptions {
-	timeout?: number
-	signal?: AbortSignal
-}
-
-export interface CompletionProcessingOptions extends ProcessingOptions {
-	onChunk?: (chunk: CompletionChunk) => void
-}
-
-export interface SpeechToTextProcessingOptions extends ProcessingOptions {
-	onChunk?: (chunk: { text: string }) => void
-}
-
-export interface TextToSpeechProcessingOptions extends ProcessingOptions {
-	onChunk?: (chunk: { audio: Buffer }) => void
 }
 
 export interface FileDownloadProgress {
@@ -206,6 +153,19 @@ export interface FileDownloadProgress {
 export interface EngineStartContext {
 	pool: ModelPool
 	store: ModelStore
+}
+
+export interface EngineTaskContext<TModelInstance = unknown, TModelConfig = ModelConfig, TModelMeta = unknown>
+	extends EngineContext<TModelConfig, TModelMeta> {
+	instance: TModelInstance
+}
+
+export interface EngineTextCompletionTaskContext<
+	TModelInstance = unknown,
+	TModelConfig = ModelConfig,
+	TModelMeta = unknown,
+> extends EngineTaskContext<TModelInstance, TModelConfig, TModelMeta> {
+	resetContext?: boolean
 }
 
 export interface ModelEngine<
@@ -223,50 +183,50 @@ export interface ModelEngine<
 	createInstance: (ctx: EngineContext<TModelConfig, TModelMeta>, signal?: AbortSignal) => Promise<TModelInstance>
 	disposeInstance: (instance: TModelInstance) => Promise<void>
 	processChatCompletionTask?: (
-		args: EngineChatCompletionArgs<TModelConfig, TModelMeta>,
-		instance: TModelInstance,
+		task: ChatCompletionTaskArgs,
+		ctx: EngineTextCompletionTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
 	) => Promise<EngineChatCompletionResult>
 	processTextCompletionTask?: (
-		args: EngineTextCompletionArgs<TModelConfig, TModelMeta>,
-		instance: TModelInstance,
+		task: TextCompletionTaskArgs,
+		ctx: EngineTextCompletionTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
 	) => Promise<EngineTextCompletionResult>
 	processEmbeddingTask?: (
-		args: EngineEmbeddingArgs<TModelConfig, TModelMeta>,
-		instance: TModelInstance,
+		task: EmbeddingTaskArgs,
+		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
 	) => Promise<EngineEmbeddingResult>
 	processImageToTextTask?: (
-		args: EngineImageToTextArgs<TModelConfig, TModelMeta>,
-		instance: TModelInstance,
+		task: ImageToTextTaskArgs,
+		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
 	) => Promise<EngineImageToTextResult>
 	processSpeechToTextTask?: (
-		args: EngineSpeechToTextArgs<TModelConfig, TModelMeta>,
-		instance: TModelInstance,
+		task: SpeechToTextTaskArgs,
+		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
 	) => Promise<EngineSpeechToTextResult>
 	processTextToSpeechTask?: (
-		args: EngineTextToSpeechArgs<TModelConfig, TModelMeta>,
-		instance: TModelInstance,
+		task: TextToSpeechTaskArgs,
+		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
 	) => Promise<EngineTextToSpeechResult>
 	processTextToImageTask?: (
-		args: EngineTextToImageArgs<TModelConfig, TModelMeta>,
-		instance: TModelInstance,
+		task: TextToImageTaskArgs,
+		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
 	) => Promise<EngineTextToImageResult>
 	processImageToImageTask?: (
-		args: EngineImageToImageArgs<TModelConfig, TModelMeta>,
-		instance: TModelInstance,
+		task: ImageToImageTaskArgs,
+		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
 	) => Promise<EngineImageToImageResult>
-	processObjectRecognitionTask?: (
-		args: EngineObjectRecognitionArgs<TModelConfig, TModelMeta>,
-		instance: TModelInstance,
+	processObjectDetectionTask?: (
+		task: ObjectDetectionTaskArgs,
+		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
-	) => Promise<EngineObjectRecognitionResult>
+	) => Promise<EngineObjectDetectionResult>
 }
 
 export interface EngineEmbeddingResult {
@@ -317,7 +277,7 @@ export interface EngineTextToSpeechResult {
 	audio: Audio
 }
 
-export interface ObjectRecognitionResult {
+export interface ObjectDetection {
 	label: string
 	score: number
 	box: {
@@ -328,6 +288,17 @@ export interface ObjectRecognitionResult {
 	}
 }
 
-export interface EngineObjectRecognitionResult {
-	objects: ObjectRecognitionResult[]
+export interface EngineObjectDetectionResult {
+	objects: ObjectDetection[]
 }
+
+export type EngineInferenceResult =
+	| EngineChatCompletionResult
+	| EngineTextCompletionResult
+	| EngineEmbeddingResult
+	| EngineImageToTextResult
+	| EngineSpeechToTextResult
+	| EngineTextToSpeechResult
+	| EngineTextToImageResult
+	| EngineImageToImageResult
+	| EngineObjectDetectionResult

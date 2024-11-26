@@ -11,18 +11,20 @@ import {
 	DEFAULT_MODEL_LIST_URL,
 } from 'gpt4all'
 import {
-	EngineTextCompletionArgs,
-	EngineChatCompletionArgs,
 	EngineChatCompletionResult,
 	EngineTextCompletionResult,
 	CompletionFinishReason,
 	EngineContext,
-	EngineEmbeddingArgs,
 	EngineEmbeddingResult,
 	FileDownloadProgress,
 	ModelConfig,
-	TextCompletionParams,
 	ChatMessage,
+	TextCompletionTaskArgs,
+	EngineTextCompletionTaskContext,
+	TextCompletionParamsBase,
+	ChatCompletionTaskArgs,
+	EmbeddingTaskArgs,
+	EngineTaskContext,
 } from '#package/types/index.js'
 import { LogLevels } from '#package/lib/logger.js'
 import { downloadModelFile } from '#package/lib/downloadModelFile.js'
@@ -50,7 +52,7 @@ export interface GPT4AllModelConfig extends ModelConfig {
 	batchSize?: number
 	task: 'text-completion' | 'embedding'
 	initialMessages?: ChatMessage[]
-	completionDefaults?: TextCompletionParams
+	completionDefaults?: TextCompletionParamsBase
 	device?: {
 		gpu?: boolean | 'auto' | (string & {})
 		gpuLayers?: number
@@ -217,14 +219,15 @@ export async function disposeInstance(instance: GPT4AllInstance) {
 }
 
 export async function processTextCompletionTask(
-	{ request, config, onChunk }: EngineTextCompletionArgs<GPT4AllModelConfig>,
-	instance: GPT4AllInstance,
+	task: TextCompletionTaskArgs,
+	ctx: EngineTextCompletionTaskContext<GPT4AllInstance, GPT4AllModelConfig, GPT4AllModelMeta>,
 	signal?: AbortSignal,
 ): Promise<EngineTextCompletionResult> {
+	const { instance, config } = ctx
 	if (!('generate' in instance)) {
 		throw new Error('Instance does not support text completion.')
 	}
-	if (!request.prompt) {
+	if (!task.prompt) {
 		throw new Error('Prompt is required for text completion.')
 	}
 
@@ -232,22 +235,22 @@ export async function processTextCompletionTask(
 	let suffixToRemove: string | undefined
 
 	const defaults = config.completionDefaults ?? {}
-	const stopTriggers = request.stop ?? defaults.stop ?? []
+	const stopTriggers = task.stop ?? defaults.stop ?? []
 	const includesStopTriggers = (text: string) => stopTriggers.find((t) => text.includes(t))
-	const result = await instance.generate(request.prompt, {
+	const result = await instance.generate(task.prompt, {
 		// @ts-ignore
 		special: true, // allows passing in raw prompt (including <|start|> etc.)
 		promptTemplate: '%1',
-		temperature: request.temperature ?? defaults.temperature,
-		nPredict: request.maxTokens ?? defaults.maxTokens,
-		topP: request.topP ?? defaults.topP,
-		topK: request.topK ?? defaults.topK,
-		minP: request.minP ?? defaults.minP,
+		temperature: task.temperature ?? defaults.temperature,
+		nPredict: task.maxTokens ?? defaults.maxTokens,
+		topP: task.topP ?? defaults.topP,
+		topK: task.topK ?? defaults.topK,
+		minP: task.minP ?? defaults.minP,
 		nBatch: config?.batchSize,
-		repeatLastN: request.repeatPenaltyNum ?? defaults.repeatPenaltyNum,
+		repeatLastN: task.repeatPenaltyNum ?? defaults.repeatPenaltyNum,
 		// repeat penalty is doing something different than both frequency and presence penalty
 		// so not falling back to them here.
-		repeatPenalty: request.repeatPenalty ?? defaults.repeatPenalty,
+		repeatPenalty: task.repeatPenalty ?? defaults.repeatPenalty,
 		// seed: args.seed, // https://github.com/nomic-ai/gpt4all/issues/1952
 		// @ts-ignore
 		onResponseToken: (tokenId, text) => {
@@ -257,8 +260,8 @@ export async function processTextCompletionTask(
 				suffixToRemove = text
 				return false
 			}
-			if (onChunk) {
-				onChunk({
+			if (task.onChunk) {
+				task.onChunk({
 					text,
 					tokens: [tokenId],
 				})
@@ -273,8 +276,8 @@ export async function processTextCompletionTask(
 				suffixToRemove = text
 				return false
 			}
-			if (onChunk) {
-				onChunk({
+			if (task.onChunk) {
+				task.onChunk({
 					text,
 					tokens: tokenIds,
 				})
@@ -283,7 +286,7 @@ export async function processTextCompletionTask(
 		},
 	})
 
-	if (result.tokensGenerated === request.maxTokens) {
+	if (result.tokensGenerated === task.maxTokens) {
 		finishReason = 'maxTokens'
 	}
 
@@ -302,17 +305,18 @@ export async function processTextCompletionTask(
 }
 
 export async function processChatCompletionTask(
-	{ request, config, resetContext, log, onChunk }: EngineChatCompletionArgs<GPT4AllModelConfig>,
-	instance: GPT4AllInstance,
+	task: ChatCompletionTaskArgs,
+	ctx: EngineTextCompletionTaskContext<GPT4AllInstance, GPT4AllModelConfig, GPT4AllModelMeta>,
 	signal?: AbortSignal,
 ): Promise<EngineChatCompletionResult> {
+	const { config, instance, resetContext, log } = ctx
 	if (!('createChatSession' in instance)) {
 		throw new Error('Instance does not support chat completion.')
 	}
 	let session = instance.activeChatSession
 	if (!session || resetContext) {
 		log(LogLevels.debug, 'Resetting chat context')
-		let messages = createChatMessageArray(request.messages)
+		let messages = createChatMessageArray(task.messages)
 		let systemPrompt
 		if (messages[0].role === 'system') {
 			systemPrompt = messages[0].content
@@ -329,7 +333,7 @@ export async function processChatCompletionTask(
 		})
 	}
 
-	const conversationMessages = createChatMessageArray(request.messages).filter((m) => m.role !== 'system')
+	const conversationMessages = createChatMessageArray(task.messages).filter((m) => m.role !== 'system')
 
 	const lastMessage = conversationMessages[conversationMessages.length - 1]
 	if (!(lastMessage.role === 'user' && lastMessage.content)) {
@@ -341,17 +345,17 @@ export async function processChatCompletionTask(
 	let suffixToRemove: string | undefined
 
 	const defaults = config.completionDefaults ?? {}
-	const stopTriggers = request.stop ?? defaults.stop ?? []
+	const stopTriggers = task.stop ?? defaults.stop ?? []
 	const includesStopTriggers = (text: string) => stopTriggers.find((t) => text.includes(t))
 	const result = await createCompletion(session, input, {
-		temperature: request.temperature ?? defaults.temperature,
-		nPredict: request.maxTokens ?? defaults.maxTokens,
-		topP: request.topP ?? defaults.topP,
-		topK: request.topK ?? defaults.topK,
-		minP: request.minP ?? defaults.minP,
+		temperature: task.temperature ?? defaults.temperature,
+		nPredict: task.maxTokens ?? defaults.maxTokens,
+		topP: task.topP ?? defaults.topP,
+		topK: task.topK ?? defaults.topK,
+		minP: task.minP ?? defaults.minP,
 		nBatch: config.batchSize,
-		repeatLastN: request.repeatPenaltyNum ?? defaults.repeatPenaltyNum,
-		repeatPenalty: request.repeatPenalty ?? defaults.repeatPenalty,
+		repeatLastN: task.repeatPenaltyNum ?? defaults.repeatPenaltyNum,
+		repeatPenalty: task.repeatPenalty ?? defaults.repeatPenalty,
 		// seed: args.seed, // see https://github.com/nomic-ai/gpt4all/issues/1952
 		// @ts-ignore
 		onResponseToken: (tokenId, text) => {
@@ -361,8 +365,8 @@ export async function processChatCompletionTask(
 				suffixToRemove = text
 				return false
 			}
-			if (onChunk) {
-				onChunk({
+			if (task.onChunk) {
+				task.onChunk({
 					text,
 					tokens: [tokenId],
 				})
@@ -377,8 +381,8 @@ export async function processChatCompletionTask(
 				suffixToRemove = text
 				return false
 			}
-			if (onChunk) {
-				onChunk({
+			if (task.onChunk) {
+				task.onChunk({
 					tokens: tokenIds,
 					text,
 				})
@@ -388,7 +392,7 @@ export async function processChatCompletionTask(
 		},
 	})
 
-	if (result.usage.completion_tokens === request.maxTokens) {
+	if (result.usage.completion_tokens === task.maxTokens) {
 		finishReason = 'maxTokens'
 	}
 
@@ -410,21 +414,22 @@ export async function processChatCompletionTask(
 }
 
 export async function processEmbeddingTask(
-	{ request, config }: EngineEmbeddingArgs,
-	instance: GPT4AllInstance,
+	task: EmbeddingTaskArgs,
+	ctx: EngineTaskContext<GPT4AllInstance, GPT4AllModelConfig, GPT4AllModelMeta>,
 	signal?: AbortSignal,
 ): Promise<EngineEmbeddingResult> {
+	const { instance, config } = ctx
 	if (!('embed' in instance)) {
 		throw new Error('Instance does not support embedding.')
 	}
-	if (!request.input) {
+	if (!task.input) {
 		throw new Error('Input is required for embedding.')
 	}
 	const texts: string[] = []
-	if (typeof request.input === 'string') {
-		texts.push(request.input)
-	} else if (Array.isArray(request.input)) {
-		for (const input of request.input) {
+	if (typeof task.input === 'string') {
+		texts.push(task.input)
+	} else if (Array.isArray(task.input)) {
+		for (const input of task.input) {
 			if (typeof input === 'string') {
 				texts.push(input)
 			} else if (input.type === 'text') {
@@ -436,7 +441,7 @@ export async function processEmbeddingTask(
 	}
 
 	const res = await createEmbedding(instance, texts, {
-		dimensionality: request.dimensions,
+		dimensionality: task.dimensions,
 	})
 
 	return {

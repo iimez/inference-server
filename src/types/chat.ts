@@ -70,18 +70,3 @@ export interface ToolDefinition<TParams extends Record<string, any> = any> {
 	handler?: (params: TParams) => Promise<ToolCallResult>
 }
 
-export interface TextCompletionParams {
-	temperature?: number
-	maxTokens?: number
-	seed?: number
-	stop?: string[]
-	repeatPenalty?: number
-	repeatPenaltyNum?: number
-	frequencyPenalty?: number
-	presencePenalty?: number
-	grammar?: string
-	topP?: number
-	minP?: number
-	topK?: number
-	tokenBias?: Record<string, number>
-}

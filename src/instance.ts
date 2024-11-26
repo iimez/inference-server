@@ -1,23 +1,20 @@
 import crypto from 'node:crypto'
 import { customAlphabet } from 'nanoid'
 import {
-	TextCompletionRequest,
-	ChatCompletionRequest,
 	ModelEngine,
 	ModelConfig,
 	ModelInstanceRequest,
-	CompletionProcessingOptions,
-	EmbeddingRequest,
-	ImageToTextRequest,
-	ProcessingOptions,
-	SpeechToTextRequest,
-	TextToSpeechRequest,
-	SpeechToTextProcessingOptions,
 	EngineChatCompletionResult,
 	EngineTextCompletionResult,
-	TextToImageRequest,
-	ImageToImageRequest,
-	ObjectRecognitionRequest,
+	ChatCompletionTaskArgs,
+	TextCompletionTaskArgs,
+	EmbeddingTaskArgs,
+	ImageToTextTaskArgs,
+	ImageToImageTaskArgs,
+	SpeechToTextTaskArgs,
+	TextToSpeechTaskArgs,
+	TextToImageTaskArgs,
+	ObjectDetectionTaskArgs,
 } from '#package/types/index.js'
 import { calculateContextIdentity } from '#package/lib/calculateContextIdentity.js'
 import { LogLevels, Logger, createLogger, withLogMeta } from '#package/lib/logger.js'
@@ -230,11 +227,11 @@ export class ModelInstance<TEngineRef = unknown> {
 		}
 	}
 
-	processChatCompletionTask(request: ChatCompletionRequest, options?: CompletionProcessingOptions) {
+	processChatCompletionTask(args: ChatCompletionTaskArgs) {
 		if (!('processChatCompletionTask' in this.engine)) {
 			throw new Error(`Engine "${this.config.engine}" does not implement chat completions`)
 		}
-		if (!request.messages?.length) {
+		if (!args.messages?.length) {
 			throw new Error('Messages are required for chat completions')
 		}
 		const id = this.generateTaskId()
@@ -251,21 +248,21 @@ export class ModelInstance<TEngineRef = unknown> {
 			resetContext = true
 		}
 		const controller = this.createTaskController({
-			timeout: options?.timeout,
-			signal: options?.signal,
+			timeout: args?.timeout,
+			signal: args?.signal,
 		})
 		// start completion processing
 		taskLogger(LogLevels.verbose, 'Creating chat completion')
 		const taskBegin = process.hrtime.bigint()
+		const taskContext = {
+			instance: this.engineRef,
+			config: this.config,
+			resetContext,
+			log: taskLogger,
+		}
 		const completionPromise = this.engine.processChatCompletionTask!(
-			{
-				request,
-				resetContext,
-				config: this.config,
-				log: taskLogger,
-				onChunk: options?.onChunk,
-			},
-			this.engineRef,
+			args,
+			taskContext,
 			controller.signal,
 		)
 			.then((result) => {
@@ -275,7 +272,7 @@ export class ModelInstance<TEngineRef = unknown> {
 					result.finishReason = 'cancel'
 				}
 				this.contextIdentity = calculateContextIdentity({
-					messages: [...request.messages, result.message],
+					messages: [...args.messages, result.message],
 				})
 				return result
 			})
@@ -322,11 +319,11 @@ export class ModelInstance<TEngineRef = unknown> {
 		}
 	}
 
-	processTextCompletionTask(request: TextCompletionRequest, options?: CompletionProcessingOptions) {
+	processTextCompletionTask(args: TextCompletionTaskArgs) {
 		if (!('processTextCompletionTask' in this.engine)) {
 			throw new Error(`Engine "${this.config.engine}" does not implement text completion`)
 		}
-		if (!request.prompt) {
+		if (!args.prompt) {
 			throw new Error('Prompt is required for text completion')
 		}
 		this.lastUsed = Date.now()
@@ -336,8 +333,8 @@ export class ModelInstance<TEngineRef = unknown> {
 			task: id,
 		})
 		const controller = this.createTaskController({
-			timeout: options?.timeout,
-			signal: options?.signal,
+			timeout: args?.timeout,
+			signal: args?.signal,
 		})
 		taskLogger(LogLevels.verbose, 'Creating text completion task')
 		// pass on resetContext if this instance has been flagged for reset
@@ -348,15 +345,14 @@ export class ModelInstance<TEngineRef = unknown> {
 			resetContext = true
 		}
 		const taskBegin = process.hrtime.bigint()
-		const completionPromise = this.engine.processTextCompletionTask!(
-			{
-				request,
-				config: this.config,
-				resetContext,
-				log: taskLogger,
-				onChunk: options?.onChunk,
-			},
-			this.engineRef,
+		const taskContext = {
+			instance: this.engineRef,
+			config: this.config,
+			resetContext,
+			log: taskLogger,
+		}
+		const completionPromise = this.engine.processTextCompletionTask!(args,
+			taskContext,
 			controller.signal,
 		)
 			.then((result) => {
@@ -366,7 +362,7 @@ export class ModelInstance<TEngineRef = unknown> {
 					result.finishReason = 'cancel'
 				}
 				this.contextIdentity = calculateContextIdentity({
-					text: request.prompt + result.text,
+					text: args.prompt + result.text,
 				})
 				return result
 			})
@@ -410,11 +406,11 @@ export class ModelInstance<TEngineRef = unknown> {
 		}
 	}
 
-	processEmbeddingTask(request: EmbeddingRequest, options?: ProcessingOptions) {
+	processEmbeddingTask(args: EmbeddingTaskArgs) {
 		if (!('processEmbeddingTask' in this.engine)) {
 			throw new Error(`Engine "${this.config.engine}" does not implement embedding`)
 		}
-		if (!request.input) {
+		if (!args.input) {
 			throw new Error('Input is required for embedding')
 		}
 		this.lastUsed = Date.now()
@@ -424,18 +420,19 @@ export class ModelInstance<TEngineRef = unknown> {
 			task: id,
 		})
 		const controller = this.createTaskController({
-			timeout: options?.timeout,
-			signal: options?.signal,
+			timeout: args?.timeout,
+			signal: args?.signal,
 		})
 		taskLogger(LogLevels.verbose, 'Creating embedding task')
 		const taskBegin = process.hrtime.bigint()
+		const taskContext = {
+			instance: this.engineRef,
+			config: this.config,
+			log: taskLogger,
+		}
 		const result = this.engine.processEmbeddingTask!(
-			{
-				request,
-				config: this.config,
-				log: taskLogger,
-			},
-			this.engineRef,
+			args,
+			taskContext,
 			controller.signal,
 		)
 			.then((result) => {
@@ -465,7 +462,7 @@ export class ModelInstance<TEngineRef = unknown> {
 		}
 	}
 
-	processImageToTextTask(request: ImageToTextRequest, options?: ProcessingOptions) {
+	processImageToTextTask(args: ImageToTextTaskArgs) {
 		if (!('processImageToTextTask' in this.engine)) {
 			throw new Error(`Engine "${this.config.engine}" does not implement image to text`)
 		}
@@ -476,17 +473,18 @@ export class ModelInstance<TEngineRef = unknown> {
 			task: id,
 		})
 		const controller = this.createTaskController({
-			timeout: options?.timeout,
-			signal: options?.signal,
+			timeout: args?.timeout,
+			signal: args?.signal,
 		})
 		const taskBegin = process.hrtime.bigint()
+		const taskContext = {
+			instance: this.engineRef,
+			config: this.config,
+			log: taskLogger,
+		}
 		const result = this.engine.processImageToTextTask!(
-			{
-				request,
-				config: this.config,
-				log: taskLogger,
-			},
-			this.engineRef,
+			args,
+			taskContext,
 			controller.signal,
 		)
 			.then((result) => {
@@ -516,7 +514,7 @@ export class ModelInstance<TEngineRef = unknown> {
 		}
 	}
 
-	processImageToImageTask(request: ImageToImageRequest, options?: ProcessingOptions) {
+	processImageToImageTask(args: ImageToImageTaskArgs) {
 		if (!('processImageToImageTask' in this.engine)) {
 			throw new Error(`Engine "${this.config.engine}" does not implement image to image`)
 		}
@@ -527,17 +525,18 @@ export class ModelInstance<TEngineRef = unknown> {
 			task: id,
 		})
 		const controller = this.createTaskController({
-			timeout: options?.timeout,
-			signal: options?.signal,
+			timeout: args?.timeout,
+			signal: args?.signal,
 		})
 		const taskBegin = process.hrtime.bigint()
+		const taskContext = {
+			instance: this.engineRef,
+			config: this.config,
+			log: taskLogger,
+		}
 		const result = this.engine.processImageToImageTask!(
-			{
-				request,
-				config: this.config,
-				log: taskLogger,
-			},
-			this.engineRef,
+			args,
+			taskContext,
 			controller.signal,
 		)
 			.then((result) => {
@@ -567,7 +566,7 @@ export class ModelInstance<TEngineRef = unknown> {
 		}
 	}
 
-	processSpeechToTextTask(request: SpeechToTextRequest, options?: SpeechToTextProcessingOptions) {
+	processSpeechToTextTask(args: SpeechToTextTaskArgs) {
 		if (!('processSpeechToTextTask' in this.engine)) {
 			throw new Error(`Engine "${this.config.engine}" does not implement speech to text`)
 		}
@@ -578,17 +577,18 @@ export class ModelInstance<TEngineRef = unknown> {
 			task: id,
 		})
 		const controller = this.createTaskController({
-			timeout: options?.timeout,
-			signal: options?.signal,
+			timeout: args?.timeout,
+			signal: args?.signal,
 		})
 		const taskBegin = process.hrtime.bigint()
+		const taskContext = {
+			instance: this.engineRef,
+			config: this.config,
+			log: taskLogger,
+		}
 		const result = this.engine.processSpeechToTextTask!(
-			{
-				request,
-				config: this.config,
-				log: taskLogger,
-			},
-			this.engineRef,
+			args,
+			taskContext,
 			controller.signal,
 		)
 			.then((result) => {
@@ -618,7 +618,7 @@ export class ModelInstance<TEngineRef = unknown> {
 		}
 	}
 
-	processTextToSpeechTask(request: TextToSpeechRequest, options?: ProcessingOptions) {
+	processTextToSpeechTask(args: TextToSpeechTaskArgs) {
 		if (!('processTextToSpeechTask' in this.engine)) {
 			throw new Error(`Engine "${this.config.engine}" does not implement text to speech`)
 		}
@@ -629,17 +629,18 @@ export class ModelInstance<TEngineRef = unknown> {
 			task: id,
 		})
 		const controller = this.createTaskController({
-			timeout: options?.timeout,
-			signal: options?.signal,
+			timeout: args?.timeout,
+			signal: args?.signal,
 		})
 		const taskBegin = process.hrtime.bigint()
+		const taskContext = {
+			instance: this.engineRef,
+			config: this.config,
+			log: taskLogger,
+		}
 		const result = this.engine.processTextToSpeechTask!(
-			{
-				request,
-				config: this.config,
-				log: taskLogger,
-			},
-			this.engineRef,
+			args,
+			taskContext,
 			controller.signal,
 		)
 			.then((result) => {
@@ -668,7 +669,7 @@ export class ModelInstance<TEngineRef = unknown> {
 		}
 	}
 
-	processTextToImageTask(request: TextToImageRequest, options?: ProcessingOptions) {
+	processTextToImageTask(args: TextToImageTaskArgs) {
 		if (!('processTextToImageTask' in this.engine)) {
 			throw new Error(`Engine "${this.config.engine}" does not implement text to image`)
 		}
@@ -679,17 +680,18 @@ export class ModelInstance<TEngineRef = unknown> {
 			task: id,
 		})
 		const controller = this.createTaskController({
-			timeout: options?.timeout,
-			signal: options?.signal,
+			timeout: args?.timeout,
+			signal: args?.signal,
 		})
 		const taskBegin = process.hrtime.bigint()
+		const taskContext = {
+			instance: this.engineRef,
+			config: this.config,
+			log: taskLogger,
+		}
 		const result = this.engine.processTextToImageTask!(
-			{
-				request,
-				config: this.config,
-				log: taskLogger,
-			},
-			this.engineRef,
+			args,
+			taskContext,
 			controller.signal,
 		)
 			.then((result) => {
@@ -719,9 +721,9 @@ export class ModelInstance<TEngineRef = unknown> {
 		}
 	}
 	
-	processObjectRecognitionTask(request: ObjectRecognitionRequest, options?: ProcessingOptions) {
-		if (!('processObjectRecognitionTask' in this.engine)) {
-			throw new Error(`Engine "${this.config.engine}" does not implement object recognition`)
+	processObjectDetectionTask(args: ObjectDetectionTaskArgs) {
+		if (!('processObjectDetectionTask' in this.engine)) {
+			throw new Error(`Engine "${this.config.engine}" does not implement object detection`)
 		}
 		this.lastUsed = Date.now()
 		const id = this.generateTaskId()
@@ -730,26 +732,27 @@ export class ModelInstance<TEngineRef = unknown> {
 			task: id,
 		})
 		const controller = this.createTaskController({
-			timeout: options?.timeout,
-			signal: options?.signal,
+			timeout: args?.timeout,
+			signal: args?.signal,
 		})
 		const taskBegin = process.hrtime.bigint()
-		const result = this.engine.processObjectRecognitionTask!(
-			{
-				request,
-				config: this.config,
-				log: taskLogger,
-			},
-			this.engineRef,
+		const taskContext = {
+			instance: this.engineRef,
+			config: this.config,
+			log: taskLogger,
+		}
+		const result = this.engine.processObjectDetectionTask!(
+			args,
+			taskContext,
 			controller.signal,
 		)
 			.then((result) => {
 				const timeElapsed = elapsedMillis(taskBegin)
 				controller.complete()
 				if (controller.timeoutSignal.aborted) {
-					taskLogger(LogLevels.warn, 'ObjectRecognition task timed out')
+					taskLogger(LogLevels.warn, 'object-detection task timed out')
 				}
-				taskLogger(LogLevels.verbose, 'ObjectRecognition task done', {
+				taskLogger(LogLevels.verbose, 'object-detection task done', {
 					elapsed: timeElapsed,
 				})
 				return result

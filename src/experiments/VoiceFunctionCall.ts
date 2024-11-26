@@ -1,6 +1,6 @@
 import {
-	EngineSpeechToTextArgs,
 	ModelEngine,
+	SpeechToTextTaskArgs,
 	ToolDefinition,
 } from '#package/types/index.js'
 import { CustomEngine } from '#package/engines/index.js'
@@ -28,13 +28,13 @@ export class VoiceFunctionCallEngine
 		this.tools = tools
 	}
 	
-	async createTranscription(args: EngineSpeechToTextArgs) {
+	async createTranscription(task: SpeechToTextTaskArgs) {
 		const speechToTextModel = await this.pool.requestInstance({
 			model: this.speechToTextModel,
 		})
 		const transcriptionTask = speechToTextModel.instance.processSpeechToTextTask(
 			{
-				...args.request,
+				...task,
 				model: this.speechToTextModel,
 			},
 		)
@@ -43,14 +43,17 @@ export class VoiceFunctionCallEngine
 		return transcription.text
 	}
 
-	async processSpeechToTextTask(args: EngineSpeechToTextArgs) {
+	async processSpeechToTextTask(
+		task: SpeechToTextTaskArgs,
+	) {
 		const [transcription, chatModel] = await Promise.all([
-			this.createTranscription(args),
+			this.createTranscription(task),
 			this.pool.requestInstance({
 				model: this.chatModel,
 			}),
 		])
 		const chatTask = chatModel.instance.processChatCompletionTask({
+			onChunk: task.onChunk,
 			model: this.chatModel,
 			tools: this.tools ? { definitions: this.tools } : undefined,
 			messages: [
@@ -59,8 +62,6 @@ export class VoiceFunctionCallEngine
 					content: transcription,
 				},
 			],
-		}, {
-			onChunk: args.onChunk,
 		})
 		const chatResponse = await chatTask.result
 		chatModel.release()
