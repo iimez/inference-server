@@ -4,8 +4,8 @@ import {
 	EngineContext,
 	FileDownloadProgress,
 	ModelConfig,
-	EngineTextCompletionResult,
-	EngineEmbeddingResult,
+	TextCompletionTaskResult,
+	EmbeddingTaskResult,
 	ImageEmbeddingInput,
 	TransformersJsModel,
 	TextEmbeddingInput,
@@ -482,7 +482,7 @@ export async function processTextCompletionTask(
 	task: TextCompletionTaskArgs,
 	ctx: EngineTextCompletionTaskContext<TransformersJsInstance, TransformersJsModelConfig>,
 	signal?: AbortSignal,
-): Promise<EngineTextCompletionResult> {
+): Promise<TextCompletionTaskResult> {
 	const { instance } = ctx
 	if (!task.prompt) {
 		throw new Error('Prompt is required for text completion.')
@@ -578,7 +578,7 @@ export async function processEmbeddingTask(
 	task: EmbeddingTaskArgs,
 	ctx: EngineTaskContext<TransformersJsInstance, TransformersJsModelConfig>,
 	signal?: AbortSignal,
-): Promise<EngineEmbeddingResult> {
+): Promise<EmbeddingTaskResult> {
 	const { instance, config } = ctx
 	if (!task.input) {
 		throw new Error('Input is required for embedding.')

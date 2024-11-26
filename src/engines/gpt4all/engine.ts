@@ -11,11 +11,11 @@ import {
 	DEFAULT_MODEL_LIST_URL,
 } from 'gpt4all'
 import {
-	EngineChatCompletionResult,
-	EngineTextCompletionResult,
+	ChatCompletionTaskResult,
+	TextCompletionTaskResult,
 	CompletionFinishReason,
 	EngineContext,
-	EngineEmbeddingResult,
+	EmbeddingTaskResult,
 	FileDownloadProgress,
 	ModelConfig,
 	ChatMessage,
@@ -222,7 +222,7 @@ export async function processTextCompletionTask(
 	task: TextCompletionTaskArgs,
 	ctx: EngineTextCompletionTaskContext<GPT4AllInstance, GPT4AllModelConfig, GPT4AllModelMeta>,
 	signal?: AbortSignal,
-): Promise<EngineTextCompletionResult> {
+): Promise<TextCompletionTaskResult> {
 	const { instance, config } = ctx
 	if (!('generate' in instance)) {
 		throw new Error('Instance does not support text completion.')
@@ -308,7 +308,7 @@ export async function processChatCompletionTask(
 	task: ChatCompletionTaskArgs,
 	ctx: EngineTextCompletionTaskContext<GPT4AllInstance, GPT4AllModelConfig, GPT4AllModelMeta>,
 	signal?: AbortSignal,
-): Promise<EngineChatCompletionResult> {
+): Promise<ChatCompletionTaskResult> {
 	const { config, instance, resetContext, log } = ctx
 	if (!('createChatSession' in instance)) {
 		throw new Error('Instance does not support chat completion.')
@@ -417,7 +417,7 @@ export async function processEmbeddingTask(
 	task: EmbeddingTaskArgs,
 	ctx: EngineTaskContext<GPT4AllInstance, GPT4AllModelConfig, GPT4AllModelMeta>,
 	signal?: AbortSignal,
-): Promise<EngineEmbeddingResult> {
+): Promise<EmbeddingTaskResult> {
 	const { instance, config } = ctx
 	if (!('embed' in instance)) {
 		throw new Error('Instance does not support embedding.')

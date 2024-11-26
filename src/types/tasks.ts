@@ -8,7 +8,7 @@ import {
 	TextToSpeechParams,
 	TextToImageParams,
 	ImageToImageParams,
-	EngineInferenceResult,
+	InferenceTaskResult,
 } from '#package/types/engine.js'
 
 export type TaskKind =
@@ -101,7 +101,7 @@ export type InferenceTaskArgs =
 	| TextToSpeechInferenceTaskArgs
 	| SpeechToTextInferenceTaskArgs
 
-export interface InferenceTask<TResult = EngineInferenceResult> {
+export interface InferenceTask<TResult = InferenceTaskResult> {
 	id: string
 	model: string
 	createdAt: Date

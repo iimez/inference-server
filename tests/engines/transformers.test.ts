@@ -140,9 +140,9 @@ suite('basic', () => {
 		expect(res.text).toBeTruthy()
 	})
 
-	test('cat recognition', async () => {
+	test('cat detection', async () => {
 		const image = await loadImageFromFile('tests/fixtures/blue-cat.jpg')
-		const res = await inferenceServer.processObjectRecognitionTask({
+		const res = await inferenceServer.processObjectDetectionTask({
 			model: 'owlv2-base',
 			image,
 			labels: ['cat', 'smurf'],
@@ -155,7 +155,7 @@ suite('basic', () => {
 
 	test('table recognition', async () => {
 		const image = await loadImageFromFile('tests/fixtures/table.png')
-		const tableRes = await inferenceServer.processObjectRecognitionTask({
+		const tableRes = await inferenceServer.processObjectDetectionTask({
 			model: 'table-transformer-detection',
 			image,
 		})
@@ -164,7 +164,7 @@ suite('basic', () => {
 		// padding because https://github.com/microsoft/table-transformer/issues/21
 		const paddedCrop = await createPaddedCrop(image, tableObject.box, 40)
 		// await saveImageToFile(paddedCrop, 'tests/fixtures/table-detected.png')
-		const tableStructureRes = await inferenceServer.processObjectRecognitionTask({
+		const tableStructureRes = await inferenceServer.processObjectDetectionTask({
 			model: 'table-transformer-structure-recognition',
 			image: paddedCrop,
 		})

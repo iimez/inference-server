@@ -4,8 +4,8 @@ import {
 	ModelEngine,
 	ModelConfig,
 	ModelInstanceRequest,
-	EngineChatCompletionResult,
-	EngineTextCompletionResult,
+	ChatCompletionTaskResult,
+	TextCompletionTaskResult,
 	ChatCompletionTaskArgs,
 	TextCompletionTaskArgs,
 	EmbeddingTaskArgs,
@@ -278,7 +278,7 @@ export class ModelInstance<TEngineRef = unknown> {
 			})
 			.catch((error) => {
 				if (error.name === 'AbortError') {
-					const emptyResponse: EngineChatCompletionResult = {
+					const emptyResponse: ChatCompletionTaskResult = {
 						finishReason: 'abort',
 						message: {
 							role: 'assistant',
@@ -368,7 +368,7 @@ export class ModelInstance<TEngineRef = unknown> {
 			})
 			.catch((error) => {
 				if (error.name === 'AbortError') {
-					const emptyResponse: EngineTextCompletionResult = {
+					const emptyResponse: TextCompletionTaskResult = {
 						finishReason: 'abort',
 						text: '',
 						promptTokens: 0,

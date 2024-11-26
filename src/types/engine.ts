@@ -186,60 +186,60 @@ export interface ModelEngine<
 		task: ChatCompletionTaskArgs,
 		ctx: EngineTextCompletionTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
-	) => Promise<EngineChatCompletionResult>
+	) => Promise<ChatCompletionTaskResult>
 	processTextCompletionTask?: (
 		task: TextCompletionTaskArgs,
 		ctx: EngineTextCompletionTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
-	) => Promise<EngineTextCompletionResult>
+	) => Promise<TextCompletionTaskResult>
 	processEmbeddingTask?: (
 		task: EmbeddingTaskArgs,
 		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
-	) => Promise<EngineEmbeddingResult>
+	) => Promise<EmbeddingTaskResult>
 	processImageToTextTask?: (
 		task: ImageToTextTaskArgs,
 		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
-	) => Promise<EngineImageToTextResult>
+	) => Promise<ImageToTextTaskResult>
 	processSpeechToTextTask?: (
 		task: SpeechToTextTaskArgs,
 		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
-	) => Promise<EngineSpeechToTextResult>
+	) => Promise<SpeechToTextTaskResult>
 	processTextToSpeechTask?: (
 		task: TextToSpeechTaskArgs,
 		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
-	) => Promise<EngineTextToSpeechResult>
+	) => Promise<TextToSpeechTaskResult>
 	processTextToImageTask?: (
 		task: TextToImageTaskArgs,
 		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
-	) => Promise<EngineTextToImageResult>
+	) => Promise<TextToImageTaskResult>
 	processImageToImageTask?: (
 		task: ImageToImageTaskArgs,
 		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
-	) => Promise<EngineImageToImageResult>
+	) => Promise<ImageToImageTaskResult>
 	processObjectDetectionTask?: (
 		task: ObjectDetectionTaskArgs,
 		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
-	) => Promise<EngineObjectDetectionResult>
+	) => Promise<ObjectDetectionTaskResult>
 }
 
-export interface EngineEmbeddingResult {
+export interface EmbeddingTaskResult {
 	embeddings: Float32Array[]
 	inputTokens: number
 }
 
-export interface ChatCompletionResult extends EngineChatCompletionResult {
-	id: string
-	model: string
-}
+// export interface ChatCompletionResult extends ChatCompletionTaskResult {
+// 	id: string
+// 	model: string
+// }
 
-export interface EngineChatCompletionResult {
+export interface ChatCompletionTaskResult {
 	message: AssistantMessage
 	finishReason: CompletionFinishReason
 	promptTokens: number
@@ -247,7 +247,7 @@ export interface EngineChatCompletionResult {
 	contextTokens: number
 }
 
-export interface EngineTextCompletionResult {
+export interface TextCompletionTaskResult {
 	text: string
 	finishReason?: CompletionFinishReason
 	promptTokens: number
@@ -255,25 +255,25 @@ export interface EngineTextCompletionResult {
 	contextTokens: number
 }
 
-export interface EngineImageToTextResult {
+export interface ImageToTextTaskResult {
 	text: string
 }
 
-export interface EngineTextToImageResult {
+export interface TextToImageTaskResult {
 	images: Image[]
 	seed: number
 }
 
-export interface EngineImageToImageResult {
+export interface ImageToImageTaskResult {
 	images: Image[]
 	seed: number
 }
 
-export interface EngineSpeechToTextResult {
+export interface SpeechToTextTaskResult {
 	text: string
 }
 
-export interface EngineTextToSpeechResult {
+export interface TextToSpeechTaskResult {
 	audio: Audio
 }
 
@@ -288,17 +288,17 @@ export interface ObjectDetection {
 	}
 }
 
-export interface EngineObjectDetectionResult {
+export interface ObjectDetectionTaskResult {
 	objects: ObjectDetection[]
 }
 
-export type EngineInferenceResult =
-	| EngineChatCompletionResult
-	| EngineTextCompletionResult
-	| EngineEmbeddingResult
-	| EngineImageToTextResult
-	| EngineSpeechToTextResult
-	| EngineTextToSpeechResult
-	| EngineTextToImageResult
-	| EngineImageToImageResult
-	| EngineObjectDetectionResult
+export type InferenceTaskResult =
+	| ChatCompletionTaskResult
+	| TextCompletionTaskResult
+	| EmbeddingTaskResult
+	| ImageToTextTaskResult
+	| SpeechToTextTaskResult
+	| TextToSpeechTaskResult
+	| TextToImageTaskResult
+	| ImageToImageTaskResult
+	| ObjectDetectionTaskResult

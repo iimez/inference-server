@@ -30,13 +30,13 @@ import {
 } from 'node-llama-cpp'
 import { StopGenerationTrigger } from 'node-llama-cpp/dist/utils/StopGenerationDetector'
 import {
-	EngineChatCompletionResult,
-	EngineTextCompletionResult,
+	ChatCompletionTaskResult,
+	TextCompletionTaskResult,
 	EngineContext,
 	ToolDefinition,
 	ToolCallResultMessage,
 	AssistantMessage,
-	EngineEmbeddingResult,
+	EmbeddingTaskResult,
 	FileDownloadProgress,
 	ModelConfig,
 	TextCompletionGrammar,
@@ -300,7 +300,7 @@ export async function processChatCompletionTask(
 	task: ChatCompletionTaskArgs,
 	ctx: EngineTextCompletionTaskContext<NodeLlamaCppInstance, NodeLlamaCppModelConfig, NodeLlamaCppModelMeta>,
 	signal?: AbortSignal,
-): Promise<EngineChatCompletionResult> {
+): Promise<ChatCompletionTaskResult> {
 	const { instance, resetContext, config, log } = ctx
 	if (!instance.chat || resetContext) {
 		log(LogLevels.debug, 'Recreating chat context', {
@@ -682,7 +682,7 @@ export async function processTextCompletionTask(
 	task: TextCompletionTaskArgs,
 	ctx: EngineTextCompletionTaskContext<NodeLlamaCppInstance, NodeLlamaCppModelConfig, NodeLlamaCppModelMeta>,
 	signal?: AbortSignal,
-): Promise<EngineTextCompletionResult> {
+): Promise<TextCompletionTaskResult> {
 	const { instance, resetContext, config, log } = ctx
 	if (!task.prompt) {
 		throw new Error('Prompt is required for text completion.')
@@ -770,7 +770,7 @@ export async function processEmbeddingTask(
 	task: EmbeddingTaskArgs,
 	ctx: EngineTaskContext<NodeLlamaCppInstance, NodeLlamaCppModelConfig, NodeLlamaCppModelMeta>,
 	signal?: AbortSignal,
-): Promise<EngineEmbeddingResult> {
+): Promise<EmbeddingTaskResult> {
 	const { instance, config, log } = ctx
 	if (!task.input) {
 		throw new Error('Input is required for embedding.')

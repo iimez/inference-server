@@ -1,7 +1,7 @@
 import { suite, it, test, beforeAll, afterAll, expect } from 'vitest'
 import { InferenceServer } from '#package/server.js'
 import {
-	ChatCompletionRequest,
+	ChatCompletionTaskArgs,
 	ChatMessage,
 	ModelOptions,
 } from '#package/types/index.js'
@@ -119,7 +119,7 @@ suite('preload', () => {
 		await inferenceServer.stop()
 	})
 	test('should utilize preloaded messages', async () => {
-		const args: ChatCompletionRequest = {
+		const args: ChatCompletionTaskArgs = {
 			model: 'test',
 			messages: [
 				...preloadedMessages,
@@ -140,7 +140,7 @@ suite('preload', () => {
 	})
 
 	test('should not utilize preloaded messages', async () => {
-		const args: ChatCompletionRequest = {
+		const args: ChatCompletionTaskArgs = {
 			model: 'test',
 			messages: [
 				{

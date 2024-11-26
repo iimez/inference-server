@@ -21,11 +21,21 @@ import {
 	TextToImageTaskArgs,
 	ImageToImageTaskArgs,
 	ObjectDetectionTaskArgs,
+	ChatCompletionTaskResult,
+	TextCompletionTaskResult,
+	EmbeddingTaskResult,
+	TextToImageTaskResult,
+	TextToSpeechTaskResult,
+	SpeechToTextTaskResult,
+	ImageToTextTaskResult,
+	ImageToImageTaskResult,
+	ObjectDetectionTaskResult,
 } from '#package/types/index.js'
 import { Logger, LogLevel, createSublogger, LogLevels } from '#package/lib/logger.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
 import { validateModelOptions } from '#package/lib/validateModelOptions.js'
 import { getCacheDirPath } from '#package/lib/getCacheDirPath.js'
+import { Text } from 'openai/resources/beta/threads/messages'
 
 /**
  * Configuration options for initializing a `InferenceServer`.
@@ -316,62 +326,62 @@ export class InferenceServer {
 		return this.processTask({
 			task: 'chat-completion',
 			...args,
-		})
+		}) as Promise<ChatCompletionTaskResult>
 	}
 	
 	processTextCompletionTask(args: TextCompletionTaskArgs) {
 		return this.processTask({
 			task: 'text-completion',
 			...args,
-		})
+		}) as Promise<TextCompletionTaskResult>
 	}
 
 	processEmbeddingTask(args: EmbeddingTaskArgs) {
 		return this.processTask({
 			task: 'embedding',
 			...args,
-		})
+		}) as Promise<EmbeddingTaskResult>
 	}
 
 	processImageToTextTask(args: ImageToTextTaskArgs) {
 		return this.processTask({
 			task: 'image-to-text',
 			...args,
-		})
+		}) as Promise<ImageToTextTaskResult>
 	}
 
 	processSpeechToTextTask(args: SpeechToTextTaskArgs) {
 		return this.processTask({
 			task: 'speech-to-text',
 			...args,
-		})
+		}) as Promise<SpeechToTextTaskResult>
 	}
 
 	 processTextToSpeechTask(args: TextToSpeechTaskArgs) {
 		return this.processTask({
 			task: 'text-to-speech',
 			...args,
-		})
+		}) as Promise<TextToSpeechTaskResult>
 	}
 
 	 processTextToImageTask(args: TextToImageTaskArgs) {
 		return this.processTask({
 			task: 'text-to-image',
 			...args,
-		})
+		}) as Promise<TextToImageTaskResult>
 	}
 	 processImageToImageTask(args: ImageToImageTaskArgs) {
 		return this.processTask({
 			task: 'image-to-image',
 			...args,
-		})
+		}) as Promise<ImageToImageTaskResult>
 	}
 
 	processObjectDetectionTask(args: ObjectDetectionTaskArgs) {
 		return this.processTask({
 			task: 'object-detection',
 			...args,
-		})
+		}) as Promise<ObjectDetectionTaskResult>
 	}
 
 	/**

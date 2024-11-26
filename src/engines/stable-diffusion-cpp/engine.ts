@@ -6,7 +6,7 @@ import {
 	EngineContext,
 	FileDownloadProgress,
 	ModelConfig,
-	EngineTextToImageResult,
+	TextToImageTaskResult,
 	ModelFileSource,
 	Image,
 	TextToImageTaskArgs,
@@ -242,7 +242,7 @@ export async function processTextToImageTask(
 	task: TextToImageTaskArgs,
 	ctx: EngineTaskContext<StableDiffusionInstance, StableDiffusionModelConfig, StableDiffusionModelMeta>,
 	signal?: AbortSignal,
-): Promise<EngineTextToImageResult> {
+): Promise<TextToImageTaskResult> {
 	const { instance, config, log } = ctx
 	const seed = task.seed ?? getRandomNumber(0, 1000000)
 	const results = await instance.context.txt2img({
@@ -283,7 +283,7 @@ export async function processImageToImageTask(
 	task: ImageToImageTaskArgs,
 	ctx: EngineTaskContext<StableDiffusionInstance, StableDiffusionModelConfig, StableDiffusionModelMeta>,
 	signal?: AbortSignal,
-): Promise<EngineTextToImageResult> {
+): Promise<TextToImageTaskResult> {
 	const { instance, config, log } = ctx
 	const seed = task.seed ?? getRandomNumber(0, 1000000)
 	console.debug('processImageToImageTask', {
