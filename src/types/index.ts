@@ -141,7 +141,7 @@ interface LlamaCppModelOptionsBase extends BuiltInModelOptionsBase {
      * @optional
      */
     contextShiftStrategy?: ContextShiftStrategy;
-		
+
 		/**
 		 * A ChatWrapper instance to use for templating conversation messages.
 		 * See https://node-llama-cpp.withcat.ai/guide/chat-wrapper
@@ -272,7 +272,7 @@ export interface TransformersJsSpeechModel {
 // TODO improve, split these by task and create union?
 interface TransformersJsModelOptions extends BuiltInModelOptionsBase, TransformersJsModel, TransformersJsSpeechModel {
 	engine: 'transformers-js'
-	task: 'image-to-text' | 'speech-to-text' | 'text-to-speech' | 'text-completion' | 'embedding' | 'object-detection'
+	task: 'image-to-text' | 'speech-to-text' | 'text-to-speech' | 'text-completion' | 'chat-completion' | 'embedding' | 'object-detection'
 	textModel?: TransformersJsModel
 	visionModel?: TransformersJsModel
 	speechModel?: TransformersJsModel & TransformersJsSpeechModel
