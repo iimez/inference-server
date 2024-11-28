@@ -34,13 +34,14 @@ export function resolveModelFileLocation({ url, filePath, modelsCachePath }: Res
 			if (pathnameSegments[1] === 'datasets') {
 				const repoOrg = pathnameSegments[2]
 				const repoName = pathnameSegments[3]
-				const branch = pathnameSegments[5] || 'main'
+				// make sure theres no minus in the branch name
+				const branch = (pathnameSegments[5] || 'main').replace(/-/g, '')
 				const trailingPath = pathnameSegments.slice(6).join('/')
 				destinationPath = path.join(modelsCachePath, parsedUrl.hostname, 'datasets', repoOrg, `${repoName}-${branch}`, trailingPath)
 			} else {
 				const repoOrg = pathnameSegments[1]
 				const repoName = pathnameSegments[2]
-				const branch = pathnameSegments[4] || 'main'
+				const branch = (pathnameSegments[4] || 'main').replace(/-/g, '')
 				const trailingPath = pathnameSegments.slice(5).join('/')
 				destinationPath = path.join(modelsCachePath, parsedUrl.hostname, repoOrg, `${repoName}-${branch}`, trailingPath)
 			}
