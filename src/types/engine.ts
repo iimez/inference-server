@@ -234,11 +234,6 @@ export interface EmbeddingTaskResult {
 	inputTokens: number
 }
 
-// export interface ChatCompletionResult extends ChatCompletionTaskResult {
-// 	id: string
-// 	model: string
-// }
-
 export interface ChatCompletionTaskResult {
 	message: AssistantMessage
 	finishReason: CompletionFinishReason

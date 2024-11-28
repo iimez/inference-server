@@ -35,7 +35,6 @@ import { Logger, LogLevel, createSublogger, LogLevels } from '#package/lib/logge
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
 import { validateModelOptions } from '#package/lib/validateModelOptions.js'
 import { getCacheDirPath } from '#package/lib/getCacheDirPath.js'
-import { Text } from 'openai/resources/beta/threads/messages'
 
 /**
  * Configuration options for initializing a `InferenceServer`.
