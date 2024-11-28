@@ -44,7 +44,7 @@ export class ModelStore {
 		this.prepareController = new AbortController()
 		this.log = createSublogger(options.log)
 		this.prepareQueue = new PQueue({
-			concurrency: options.prepareConcurrency ?? 2,
+			concurrency: options.prepareConcurrency ?? 10,
 		})
 		this.modelsCachePath = options.modelsCachePath
 		this.models = Object.fromEntries(
