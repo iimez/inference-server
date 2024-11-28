@@ -13,6 +13,10 @@ import { TransformersJsModelConfig } from './engine.js'
 import { parseHuggingfaceModelIdAndBranch, remoteFileExists, normalizeTransformersJsClass } from './util.js'
 import { TransformersJsModelClass, TransformersJsProcessorClass, TransformersJsTokenizerClass } from '#package/engines/transformers-js/types.js'
 
+// currently the way transformers.js models are validated is by trying to load them, catching the error and checking if the error message contains the signature.
+// major upside being that we let transformers.js logic figure out which files are required. downside is, we have to hope that the message text stays the same.
+const fileNotFoundSignature = 'file was not found locally'
+
 async function validateModel(
 	modelOpts: TransformersJsModel,
 	config: TransformersJsModelConfig,
@@ -27,8 +31,11 @@ async function validateModel(
 			dtype: modelOpts.dtype || 'fp32',
 		})
 		await model.dispose()
-	} catch (error) {
-		return `Failed to load model (${error})`
+	} catch (error: any) {
+		if (error.message.includes(fileNotFoundSignature)) {
+			return `Failed to load model (${error.message})`
+		}
+		throw error
 	}
 	return undefined
 }
@@ -50,8 +57,11 @@ async function validateTokenizer(
 				})
 			}
 		}
-	} catch (error) {
-		return `Failed to load tokenizer (${error})`
+	} catch (error: any) {
+		if (error.message.includes(fileNotFoundSignature)) {
+			return `Failed to load model (${error.message})`
+		}
+		throw error
 	}
 	return undefined
 }
@@ -90,8 +100,11 @@ async function validateProcessor(
 				}
 			}
 		}
-	} catch (error) {
-		return `Failed to load processor (${error})`
+	} catch (error: any) {
+		if (error.message.includes(fileNotFoundSignature)) {
+			return `Failed to load model (${error.message})`
+		}
+		throw error
 	}
 	return undefined
 }
@@ -112,8 +125,11 @@ async function validateVocoder(
 			await vocoderClass.from_pretrained(vocoderPath, {
 				local_files_only: true,
 			})
-		} catch (error) {
-			return `Failed to load vocoder (${error})`
+		} catch (error: any) {
+			if (error.message.includes(fileNotFoundSignature)) {
+				return `Failed to load vocoder (${error.message})`
+			}
+			throw error
 		}
 	}
 	return undefined
