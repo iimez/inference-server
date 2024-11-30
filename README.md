@@ -32,7 +32,7 @@ const localModels = new InferenceServer({
       // Required are `task`, `engine`, `url` and/or `file`.
       task: 'text-completion', // text-completion models can be used for chat and text generation tasks
       engine: 'node-llama-cpp', // each engine comes with a peer dep. `npm install node-llama-cpp@3`
-      url: 'https://huggingface.co/HuggingFaceTB/smollm-135M-instruct-v0.2-Q8_0-GGUF/blob/main/smollm-135m-instruct-add-basics-q8_0.gguf',
+      url: 'https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct-GGUF/blob/main/smollm2-1.7b-instruct-q4_k_m.gguf',
     },
   },
 })
@@ -50,7 +50,8 @@ console.debug(result)
 localModels.stop()
 ```
 
-Or, to start an OAI compatible HTTP server with two concurrent instances of the same model:
+Or, to launch an OpenAI-compatible HTTP server with two concurrent instances of the same model:
+
 
 ```ts http-api.ts
 import { InferenceServer, createExpressServer } from 'inference-server'
@@ -63,7 +64,7 @@ const localModels = new InferenceServer({
     'smollm': {
       task: 'text-completion',
       engine: 'node-llama-cpp',
-      url: 'https://huggingface.co/HuggingFaceTB/smollm-135M-instruct-v0.2-Q8_0-GGUF/blob/main/smollm-135m-instruct-add-basics-q8_0.gguf',
+      url: 'https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct-GGUF/blob/main/smollm2-1.7b-instruct-q4_k_m.gguf',
       maxInstances: 2, // two instances of this model may be loaded into memory
       device: {
         cpuThreads: 4, // limit cpu threads so we dont occupy all cores
@@ -94,6 +95,8 @@ for await (const chunk of completion) {
 localModels.stop()
 httpServer.close()
 ```
+
+In addition to the OpenAI endpoints, the server created by `createExpressServer` will also display some internal state at `/`. The endpoint implementations are also exported from the package and can be used with any http server.
 
 More usage examples:
 - Using all available options / model options API doc [./examples/all-options](./examples/all-options.js).
@@ -131,6 +134,9 @@ Only available when using node-llama-cpp and a model that supports function call
 ##### Huge node_modules when installing all engines
 CUDA binaries are distributed with each engine seperately, which leads to an extra 0.5-1GB of disk use. Unfortunately there is nothing I can do about that.
 
+##### Can't use larger models with transformers.js
+Models using the ONNX external data format are currently ([not supported in node.js+transformers.js](https://github.com/huggingface/transformers.js/blob/e129c47c65a049173f35e6263fd8d9f660dfc1a7/src/models.js#L240-L242)).
+
 #### TODO / Roadmap
 
 Not in any particular order:
@@ -143,22 +149,25 @@ Not in any particular order:
 - [x] Add stable-diffusion engine
 - [x] Implement more transformer.js tasks
 - [x] [CLI](https://github.com/iimez/inference-server/discussions/7)
-- [x] Rename InferenceServer and startHttpServer and refactor task types
+- [x] Rename ModelServer -> InferenceServer and refactor task types
+- [x] Support for transformer.js text-completion and chat-completion tasks
 - [ ] Add some light jsdoc for server/pool/store methods
 - [ ] Should support adding a json schema grammar on completion requests (not just a grammar name)
 - [ ] utilize node-llama-cpp's support to reuse LlamaModel weights with multiple contexts (across instances)
-- [ ] Support transformer.js for text-completion tasks ([not yet supported in Node.js](https://github.com/huggingface/transformers.js/blob/e129c47c65a049173f35e6263fd8d9f660dfc1a7/src/models.js#L240-L242))
+- [ ] Add `n` parameter support to node-llama-cpp+transformers chat completions
 - [ ] Infill completion support https://github.com/withcatai/node-llama-cpp/blob/beta/src/evaluator/LlamaCompletion.ts#L322-L336
 - [ ] Support HF auth and support HF-like model repositories on other domains
-- [ ] Find a way to type available custom engines (and their options?)
 - [ ] Rework GPU+device usage / lock (Support multiple models on gpu in cases where its possible)
 - [ ] Add engine interfaces for resource use (and estimates, see https://github.com/ggerganov/llama.cpp/issues/4315 and https://github.com/withcatai/node-llama-cpp/blob/beta/src/gguf/insights/utils/resolveContextContextSizeOption.ts)
 - [ ] Allow configuring a pools max memory usage
+- [ ] Support logits with transformers and node-llama-cpp
 - [ ] Test deno/bun support
 - [ ] Add image generation endpoint in oai api
 - [ ] Add transcript endpoint in oai api
-- [ ] Add `n` parameter support to node-llama-cpp chat completions
+- [ ] Add createSpeech endpoint in oai api
+- [ ] Read more model metadata and expose it in API+CLI
 - [ ] Replace express with tinyhttp
+- [ ] Find a way to type available custom engines (and their options?)
 
 ### Contributing
 
@@ -169,7 +178,6 @@ If you are using this package - let me know where [you would like this to go](ht
 - Create a separate HTTP API thats independent of the OpenAI spec and stateful. See [discussion](https://github.com/iimez/inference-server/discussions/8).
 - Add a clientside library (React hooks?) for use of above API.
 - Provide a Docker image. And maybe a Prometheus endpoint.
-- Logprobs support for node-llama-cpp.
 
 #### Currently not the Goals
 
