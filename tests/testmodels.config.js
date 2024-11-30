@@ -102,12 +102,13 @@ export const config = {
 			task: 'object-detection',
 			dtype: 'fp16',
 		},
-		mobilellm: {
-			url: 'https://huggingface.co/onnx-community/MobileLLM-600M',
+		'smollm2': {
+			url: 'https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct',
+			// url: 'https://huggingface.co/onnx-community/Janus-1.3B-ONNX',
+			// modelClass: 'MultiModalityCausalLM',
 			engine: 'transformers-js',
-			task: 'text-completion',
-			modelClass: 'MobileLLMForCausalLM',
-			dtype: 'fp16',
-		},
+			task: 'chat-completion',
+			dtype: 'int8',
+		}
 	},
 }

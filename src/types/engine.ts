@@ -244,7 +244,7 @@ export interface ChatCompletionTaskResult {
 
 export interface TextCompletionTaskResult {
 	text: string
-	finishReason?: CompletionFinishReason
+	finishReason: CompletionFinishReason
 	promptTokens: number
 	completionTokens: number
 	contextTokens: number

@@ -12,20 +12,22 @@ export async function runContextReuseTest(
 	// middle part of the completion id is the instance uid.
 	// we'll use this to verify which instance handled a completion.
 	const messagesA: ChatMessage[] = [
-		{ role: 'user', content: 'Tell me a fun fact about bears.' },
+		{ role: 'user', content: 'Write a fun fact about bears.' },
 	]
 	const responseA1 = await createChatCompletion(inferenceServer, {
+		model,
 		maxTokens: 100,
 		messages: messagesA,
 	})
 	const instanceIdA1 = parseInstanceId(responseA1.task.id)
 	// do a unrelated chat completion that should be picked up by the other instance
 	const responseB1 = await createChatCompletion(inferenceServer, {
+		model,
 		maxTokens: 100,
 		messages: [
 			{
 				role: 'user',
-				content: 'Write a haiku about pancakes.',
+				content: 'Count to ten.',
 			},
 		],
 	})
@@ -34,9 +36,10 @@ export async function runContextReuseTest(
 	// send a follow up turn to see if context is still there
 	messagesA.push(responseA1.result.message, {
 		role: 'user',
-		content: 'Continue.',
+		content: 'Write me another please.',
 	})
 	const responseA2 = await createChatCompletion(inferenceServer, {
+		model,
 		maxTokens: 100,
 		messages: messagesA,
 	})

@@ -1,5 +1,5 @@
 import type { InferenceServer } from '#package/server.js'
-import { ChatCompletionRequest, TextCompletionRequest } from '#package/types/index.js'
+import { ChatCompletionTaskArgs, TextCompletionTaskArgs } from '#package/types/index.js'
 
 const testDefaults = {
 	model: 'test',
@@ -10,15 +10,16 @@ const defaultTimeout = 30000
 
 export async function createChatCompletion(
 	server: InferenceServer,
-	args: Omit<ChatCompletionRequest, 'model'> & { model?: string },
+	args: Omit<ChatCompletionTaskArgs, 'model'> & { model?: string },
 	timeout = defaultTimeout
 ) {
 	const mergedArgs = {
 		...testDefaults,
 		...args,
+		timeout,
 	}
 	const lock = await server.pool.requestInstance(mergedArgs)
-	const task = lock.instance.processChatCompletionTask(mergedArgs, { timeout })
+	const task = lock.instance.processChatCompletionTask(mergedArgs)
 	const device = lock.instance.gpu ? 'gpu' : 'cpu'
 	try {
 		await task.result
@@ -35,15 +36,16 @@ export async function createChatCompletion(
 
 export async function createTextCompletion(
 	server: InferenceServer,
-	args: Omit<TextCompletionRequest, 'model'> & { model?: string },
+	args: Omit<TextCompletionTaskArgs, 'model'> & { model?: string },
 	timeout = defaultTimeout
 ) {
 	const mergedArgs = {
 		...testDefaults,
 		...args,
+		timeout,
 	}
 	const lock = await server.pool.requestInstance(mergedArgs)
-	const task = lock.instance.processTextCompletionTask(mergedArgs, { timeout })
+	const task = lock.instance.processTextCompletionTask(mergedArgs)
 	const device = lock.instance.gpu ? 'gpu' : 'cpu'
 	const result = await task.result
 	await lock.release()

@@ -1,4 +1,4 @@
-import path, { normalize } from 'node:path'
+import path from 'node:path'
 import fs from 'node:fs'
 import {
 	EngineContext,
@@ -20,6 +20,11 @@ import {
 	TextToSpeechTaskArgs,
 	ObjectDetection,
 	ObjectDetectionTaskArgs,
+	ChatCompletionTaskArgs,
+	ChatCompletionTaskResult,
+	ChatMessage,
+	MessageTextContentPart,
+	CompletionFinishReason,
 } from '#package/types/index.js'
 import {
 	env,
@@ -36,6 +41,8 @@ import {
 	SpeechT5ForTextToSpeech,
 	WhisperForConditionalGeneration,
 	ModelOutput,
+	StoppingCriteria,
+	ProgressInfo,
 } from '@huggingface/transformers'
 import { LogLevels } from '#package/lib/logger.js'
 import { resampleAudioBuffer } from '#package/lib/loadAudio.js'
@@ -55,6 +62,8 @@ import {
 	TransformersJsProcessorClass,
 	TransformersJsTokenizerClass,
 } from '#package/engines/transformers-js/types.js'
+import { flattenMessageTextContent } from '#package/lib/flattenMessageTextContent.js'
+import { sign } from 'node:crypto'
 
 export interface TransformersJsModelComponents<TModel = PreTrainedModel> {
 	model?: TModel
@@ -125,13 +134,13 @@ async function disposeModelComponents(modelComponents: TransformersJsModelCompon
 	}
 }
 
-interface TransformersJsDownloadProgress {
-	status: 'progress' | 'done' | 'initiate'
-	name: string
-	file: string
-	progress: number
-	loaded: number
-	total: number
+interface TransformersJsDownloadProgress extends ProgressInfo {
+	// status: 'progress' | 'done' | 'initiate'
+	// name: string
+	// file: string
+	// progress: number
+	// loaded: number
+	// total: number
 }
 
 export async function prepareModel(
@@ -163,8 +172,8 @@ export async function prepareModel(
 			if (onProgress && progress.status === 'progress') {
 				onProgress({
 					file: env.cacheDir + progress.name + '/' + progress.file,
-					loadedBytes: progress.loaded,
-					totalBytes: progress.total,
+					loadedBytes: progress.loaded || 0,
+					totalBytes: progress.total || 0,
 				})
 			}
 		}
@@ -451,7 +460,21 @@ export async function createInstance({ config, log }: EngineContext<Transformers
 		speech: models[3] as SpeechModelComponents & TransformersJsModelComponents,
 	}
 
-	// TODO preload by doing a tiny generation depending on model type?
+	// warm up model by doing a tiny generation
+	if (config.task === 'chat-completion') {
+		const chatModel = instance.text || (instance.primary as TransformersJsModelComponents)
+		if (chatModel.tokenizer && !chatModel.processor) { // TODO figure out a way to warm up using processor?
+			const inputs = chatModel.tokenizer('a')
+			await chatModel.model!.generate({ ...inputs, max_new_tokens: 1 })
+		}
+	}
+	if (config.task === 'text-completion') {
+		const textModel = instance.text || (instance.primary as TransformersJsModelComponents)
+		const inputs = textModel.tokenizer!('a')
+		await textModel.model!.generate({ ...inputs, max_new_tokens: 1 })
+	}
+
+	// TODO warm up other model types
 	// ie for whisper, this seems to speed up the initial response time
 	// await model.generate({
 	// 	input_features: full([1, 80, 3000], 0.0),
@@ -475,6 +498,185 @@ export async function disposeInstance(instance: TransformersJsInstance) {
 	await Promise.all(disposePromises)
 }
 
+class CustomStoppingCriteria extends StoppingCriteria {
+	stopped: boolean
+	constructor() {
+		super()
+		this.stopped = false
+	}
+	stop() {
+		this.stopped = true
+	}
+	reset() {
+		this.stopped = false
+	}
+	override _call(inputIds: any, scores: any) {
+		return new Array(inputIds.length).fill(this.stopped)
+	}
+}
+
+function prepareInputMessages(messages: ChatMessage[]) {
+	const images: RawImage[] = []
+	const inputMessages = messages.map((message) => {
+		if (typeof message.content === 'string') {
+			return {
+				role: message.role,
+				content: message.content,
+			}
+		} else if (Array.isArray(message.content)) {
+			return {
+				role: message.role,
+				content: message.content.map((part) => {
+					if (part.type === 'text') {
+						return part
+					} else if (part.type === 'image') {
+						const rawImage = new RawImage(
+							new Uint8ClampedArray(part.image.data),
+							part.image.width,
+							part.image.height,
+							part.image.channels as 1 | 2 | 3 | 4,
+						)
+						images.push(rawImage)
+						return {
+							type: 'text',
+							text: '<image_placeholder>',
+						} as MessageTextContentPart
+					} else {
+						throw new Error('Invalid message content: unknown part type')
+					}
+				}),
+			}
+		} else {
+			throw new Error('Invalid message content: must be string or array')
+		}
+	})
+	return {
+		inputMessages: inputMessages.map((message) => {
+			return {
+				role: message.role,
+				content: flattenMessageTextContent(message.content),
+			}
+		}),
+		images,
+	}
+}
+
+export async function processChatCompletionTask(
+	task: ChatCompletionTaskArgs,
+	ctx: EngineTextCompletionTaskContext<TransformersJsInstance, TransformersJsModelConfig>,
+	signal?: AbortSignal,
+): Promise<ChatCompletionTaskResult> {
+	const { instance } = ctx
+	if (!task.messages) {
+		throw new Error('Messages are required for chat completion.')
+	}
+	const chatModel = instance.text || (instance.primary as TransformersJsModelComponents)
+	if (!(chatModel.tokenizer && chatModel.model)) {
+		throw new Error('Chat model is not loaded.')
+	}
+
+	const { images, inputMessages } = prepareInputMessages(task.messages)
+
+	let inputs
+	let inputTokenCount = 0
+	const inputText: any = chatModel.tokenizer.apply_chat_template(inputMessages, {
+		tokenize: false,
+		add_generation_prompt: true,
+		return_dict: true,
+	})
+	if (chatModel.processor) {
+		inputs = await chatModel.processor(inputMessages, {
+			images,
+		})
+	} else {
+		inputs = chatModel.tokenizer(inputText, {
+			return_tensor: true,
+			add_special_tokens: false,
+		})
+	}
+	inputTokenCount = inputs.input_ids.size
+	
+	const stoppingCriteria = new CustomStoppingCriteria()
+	signal?.addEventListener('abort', () => {
+		stoppingCriteria.stop()
+	})
+
+	let responseText = ''
+	let finishReason: CompletionFinishReason = 'cancel'
+	const streamer = new TextStreamer(chatModel.tokenizer, {
+		skip_prompt: true,
+		decode_kwargs: {
+			skip_special_tokens: true,
+		},
+		callback_function: (output: string) => {
+			responseText += output
+			if (task.stop && task.stop.some((stopToken) => output.includes(stopToken))) {
+				stoppingCriteria.stop()
+				finishReason = 'stopTrigger'
+			}
+			if (task.onChunk) {
+				const tokens = chatModel.tokenizer!.encode(output)
+				task.onChunk({ text: output, tokens: tokens })
+			}
+		},
+	})
+
+	const maxTokens = task.maxTokens ?? 128
+	const outputs = (await chatModel.model.generate({
+		...inputs,
+		// common params
+		max_new_tokens: maxTokens,
+		repetition_penalty: task.repeatPenalty ?? 1.0, // 1 = no penalty
+		temperature: task.temperature ?? 1.0,
+		top_k: task.topK ?? 50,
+		top_p: task.topP ?? 1.0,
+		// do_sample: true,
+		// num_beams: 1,
+		// num_return_sequences: 2, // TODO https://github.com/huggingface/transformers.js/issues/1007
+		// eos_token_id: stopTokens[0], // TODO implement stop
+		streamer,
+		// transformers-exclusive params
+		// Since the score is the log likelihood of the sequence (i.e. negative), `length_penalty` > 0.0 promotes longer sequences, while `length_penalty` < 0.0 encourages shorter sequences.
+		// length_penalty: -64,
+		// The tuple shall consist of: `(start_index, decay_factor)` where `start_index` indicates where penalty starts and `decay_factor` represents the factor of exponential decay.
+		// exponential_decay_length_penalty: [1, 64],
+		// typical_p: 1,
+		// epsilon_cutoff: 0,
+		// eta_cutoff: 0,
+		// diversity_penalty: 0,
+		// encoder_repetition_penalty: 1.0, // 1 = no penalty
+		// no_repeat_ngram_size: 0,
+		// forced_eos_token_id: [],
+		// bad_words_ids: [],
+		// force_words_ids: [],
+		// suppress_tokens: [],
+		stopping_criteria: stoppingCriteria,
+	})) as Tensor
+	const outputTokenCount = outputs.size
+	// const hasEogToken = outputs.
+	// @ts-ignore
+	const outputTexts = chatModel.tokenizer.batch_decode(outputs, { skip_special_tokens: false })
+	const eosToken = chatModel.tokenizer._tokenizer_config.eos_token
+	const hasEogToken = outputTexts[0].endsWith(eosToken)
+	const completionTokenCount = outputTokenCount - inputTokenCount
+
+	if (hasEogToken) {
+		finishReason = 'eogToken'
+	} else if (completionTokenCount >= maxTokens) {
+		finishReason = 'maxTokens'
+	}
+	return {
+		finishReason,
+		message: {
+			role: 'assistant',
+			content: responseText,
+		},
+		promptTokens: inputTokenCount,
+		completionTokens: outputTokenCount - inputTokenCount,
+		contextTokens: outputTokenCount,
+	}
+}
+
 // TextGenerationPipeline https://github.com/huggingface/transformers.js/blob/705cfc456f8b8f114891e1503b0cdbaa97cf4b11/src/pipelines.js#L977
 // Generation Args https://github.com/huggingface/transformers.js/blob/705cfc456f8b8f114891e1503b0cdbaa97cf4b11/src/generation/configuration_utils.js#L11
 // default Model.generate https://github.com/huggingface/transformers.js/blob/705cfc456f8b8f114891e1503b0cdbaa97cf4b11/src/models.js#L1378
@@ -487,58 +689,60 @@ export async function processTextCompletionTask(
 	if (!task.prompt) {
 		throw new Error('Prompt is required for text completion.')
 	}
-	if (!(instance.primary?.tokenizer && instance.primary?.model)) {
+	const textModel = instance.text || (instance.primary as TransformersJsModelComponents)
+	if (!(textModel?.tokenizer && textModel?.model)) {
 		throw new Error('Text model is not loaded.')
 	}
-	if (!('generate' in instance.primary.model)) {
+	if (!('generate' in textModel.model)) {
 		throw new Error('Text model does not support generation.')
 	}
-	instance.primary.tokenizer.padding_side = 'left'
-	const inputs = instance.primary.tokenizer(task.prompt, {
+	textModel.tokenizer.padding_side = 'left'
+	const inputs = textModel.tokenizer(task.prompt, {
 		add_special_tokens: false,
 		padding: true,
 		truncation: true,
 	})
 	
-	// TODO implement stop. look at transformers.js StoppingCriteria?
-	// if (request.stop) {
-	// 	const stopTokenTexts = request.stop ? request.stop : []
-	// 	console.debug('stopTokenTexts', stopTokenTexts)
-	// 	const stopTokens = instance.primary.tokenizer(stopTokenTexts, {
-	// 		add_special_tokens: false,
-	// 		padding: false,
-	// 		truncation: false,
-	// 	}).input_ids
-	// 	// console.debug('tokenizer', instance.primary.tokenizer)
-	// 	console.debug('stopTokens', stopTokens, stopTokens[0])
-	// }
-	
-	const streamer = new TextStreamer(instance.primary.tokenizer, {
+	const stoppingCriteria = new CustomStoppingCriteria()
+	signal?.addEventListener('abort', () => {
+		stoppingCriteria.stop()
+	})
+
+	let finishReason: CompletionFinishReason = 'cancel'
+
+	const streamer = new TextStreamer(textModel.tokenizer, {
+		skip_prompt: true,
 		callback_function: (output: string) => {
-			if (task.onChunk && output !== task.prompt) {
-				const tokens = instance.primary!.tokenizer!.encode(output)
+			if (task.stop && task.stop.some((stopToken) => output.includes(stopToken))) {
+				stoppingCriteria.stop()
+				finishReason = 'stopTrigger'
+			}
+			if (task.onChunk) {
+				const tokens = textModel.tokenizer!.encode(output)
 				task.onChunk({ text: output, tokens: tokens })
 			}
 		},
 	})
 
-	const outputs: ModelOutput = await instance.primary.model.generate({
+	
+	const maxTokens = task.maxTokens ?? 128
+	const outputs: ModelOutput = await textModel.model.generate({
 		...inputs,
 		renormalize_logits: true,
 		output_scores: true, // TODO currently no effect
 		return_dict_in_generate: true,
 		// common params
-		max_new_tokens: task.maxTokens ?? 128,
-		repetition_penalty: task.repeatPenalty ?? 2.0, // 1 = no penalty
-		temperature: task.temperature ?? 1.0,
-		top_k: task.topK ?? 50,
-		top_p: task.topP ?? 1.0,
-		num_beams: 1,
+		max_new_tokens: maxTokens,
+		repetition_penalty: task.repeatPenalty ?? 1.0, // 1 = no penalty
+		temperature: task.temperature,
+		top_k: task.topK,
+		top_p: task.topP,
+		// num_beams: 1,
 		// num_return_sequences: 2, // TODO https://github.com/huggingface/transformers.js/issues/1007
 		// eos_token_id: stopTokens[0], // TODO implement stop
 		length_penalty: 0,
 		streamer,
-		// exclusive params
+		// transformers-exclusive params
 		// length_penalty: -64, // Since the score is the log likelihood of the sequence (i.e. negative), `length_penalty` > 0.0 promotes longer sequences, while `length_penalty` < 0.0 encourages shorter sequences.
 		// The tuple shall consist of: `(start_index, decay_factor)` where `start_index` indicates where penalty starts and `decay_factor` represents the factor of exponential decay.
 		// exponential_decay_length_penalty: [1, 64],
@@ -562,9 +766,20 @@ export async function processTextCompletionTask(
 	// @ts-ignore
 	const outputTokenCount = outputs.sequences.tolist().reduce((acc, sequence) => acc + sequence.length, 0)
 	const inputTokenCount = inputs.input_ids.size
+	
+	// const outputTexts = chatModel.tokenizer.batch_decode(outputs, { skip_special_tokens: false })
+	const eosToken = textModel.tokenizer._tokenizer_config.eos_token
+	const hasEogToken = outputTexts[0].endsWith(eosToken)
+	const completionTokenCount = outputTokenCount - inputTokenCount
+
+	if (hasEogToken) {
+		finishReason = 'eogToken'
+	} else if (completionTokenCount >= maxTokens) {
+		finishReason = 'maxTokens'
+	}
 
 	return {
-		finishReason: 'eogToken',
+		finishReason,
 		text: generatedText,
 		promptTokens: inputTokenCount,
 		completionTokens: outputTokenCount,
