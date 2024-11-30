@@ -30,6 +30,15 @@ import {
 	ImageToTextTaskResult,
 	ImageToImageTaskResult,
 	ObjectDetectionTaskResult,
+	ChatCompletionInferenceTaskArgs,
+	TextCompletionInferenceTaskArgs,
+	EmbeddingInferenceTaskArgs,
+	ImageToTextInferenceTaskArgs,
+	SpeechToTextInferenceTaskArgs,
+	TextToSpeechInferenceTaskArgs,
+	TextToImageInferenceTaskArgs,
+	ImageToImageInferenceTaskArgs,
+	ObjectDetectionInferenceTaskArgs,
 } from '#package/types/index.js'
 import { Logger, LogLevel, createSublogger, LogLevels } from '#package/lib/logger.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
@@ -46,32 +55,32 @@ export interface InferenceServerOptions {
 	 * @type {Record<string, ModelEngine>}
 	 * @optional
 	 */
-	engines?: Record<string, ModelEngine>;
+	engines?: Record<string, ModelEngine>
 
 	/**
 	 * A record of model configurations, where each model is identified by a unique ID, defined by the user.
 	 * @type {Record<string, ModelOptions>}
 	 */
-	models: Record<string, ModelOptions>;
+	models: Record<string, ModelOptions>
 	/**
 	 * The maximum number of concurrent tasks allowed in the model pool.
 	 * @type {number}
 	 * @optional
 	 */
-	concurrency?: number;
+	concurrency?: number
 	/**
 	 * The path to the cache directory where model files and related data will be stored.
 	 * @type {string}
 	 * @optional
 	 */
-	cachePath?: string;
+	cachePath?: string
 	/**
 	 * A logger instance or log level to control logging for the server. If a log level is provided,
 	 * a default logger will be created with that level.
 	 * @type {Logger | LogLevel}
 	 * @optional
 	 */
-	log?: Logger | LogLevel;
+	log?: Logger | LogLevel
 }
 
 /**
@@ -80,7 +89,7 @@ export interface InferenceServerOptions {
  * using llama.cpp as the engine, with the task of text-completion and two instances of smollm.
  *
  * @class InferenceServer
- * @example 
+ * @example
  * const inferenceServer = new InferenceServer({
  *   log: 'info',
  *   concurrency: 2,
@@ -227,19 +236,21 @@ export class InferenceServer {
 		await Promise.all([this.store.init(this.engines), this.pool.init(this.engines)])
 	}
 	/**
- 	 * Stops the server. disposes all resources. Clears the queue of working tasks.
- 	 **/
+	 * Stops the server. disposes all resources. Clears the queue of working tasks.
+	 **/
 	async stop() {
 		this.log(LogLevels.info, 'Stopping model server')
 		this.pool.queue.clear()
 		this.store.dispose()
-		// need to make sure all tasks are canceled, waiting for idle can make stop hang
-		// await this.pool.queue.onIdle() // would wait until all completions are done
+
 		try {
 			await this.pool.dispose() // might cause abort errors when there are still running tasks
 		} catch (err) {
 			this.log(LogLevels.error, 'Error while stopping model server', err)
 		}
+		this.log(LogLevels.debug, 'Waiting for running tasks to finish')
+		// wait until all running tasks are cancelled
+		await this.pool.queue.onIdle()
 
 		this.log(LogLevels.debug, 'Model server stopped')
 	}
@@ -278,109 +289,126 @@ export class InferenceServer {
 			await modelReady
 		}
 	}
-	
+
+	async processTask(args: TextCompletionInferenceTaskArgs): Promise<TextCompletionTaskResult>
+	async processTask(args: ChatCompletionInferenceTaskArgs): Promise<ChatCompletionTaskResult>
+	async processTask(args: EmbeddingInferenceTaskArgs): Promise<EmbeddingTaskResult>
+	async processTask(args: ImageToTextInferenceTaskArgs): Promise<ImageToTextTaskResult>
+	async processTask(args: SpeechToTextInferenceTaskArgs): Promise<SpeechToTextTaskResult>
+	async processTask(args: TextToSpeechInferenceTaskArgs): Promise<TextToSpeechTaskResult>
+	async processTask(args: TextToImageInferenceTaskArgs): Promise<TextToImageTaskResult>
+	async processTask(args: ImageToImageInferenceTaskArgs): Promise<ImageToImageTaskResult>
+	async processTask(args: ObjectDetectionInferenceTaskArgs): Promise<ObjectDetectionTaskResult>
+
 	async processTask(args: InferenceTaskArgs) {
 		const lock = await this.requestInstance(args)
-		let task: InferenceTask
-		
-		switch (args.task) {
-			case 'text-completion':
-				task = await lock.instance.processTextCompletionTask(args as TextCompletionTaskArgs)
-				break
-			case 'chat-completion':
-				task = lock.instance.processChatCompletionTask(args as ChatCompletionTaskArgs)
-				break
-			case 'embedding':
-				task = lock.instance.processEmbeddingTask(args as EmbeddingTaskArgs)
-				break
-			case 'image-to-text':
-				task = lock.instance.processImageToTextTask(args as ImageToTextTaskArgs)
-				break
-			case 'text-to-speech':
-				task = lock.instance.processTextToSpeechTask(args as TextToSpeechTaskArgs)
-				break
-			case 'speech-to-text':
-				task = lock.instance.processSpeechToTextTask(args as SpeechToTextTaskArgs)
-				break
-			case 'text-to-image':
-				task = lock.instance.processTextToImageTask(args as TextToImageTaskArgs)
-				break
-			case 'image-to-image':
-				task = lock.instance.processImageToImageTask(args as ImageToImageTaskArgs)
-				break
-			case 'object-detection':
-				task = lock.instance.processObjectDetectionTask(args as ObjectDetectionTaskArgs)
-				break
-			default:
-				// @ts-expect-error
-				throw new Error(`Unknown task type: ${args.task}`)
+		const waitForResult = async <T>(task: InferenceTask): Promise<T> => {
+			const result = await task.result
+			await lock.release()
+			return result as T
 		}
 
-		const result = await task.result
-		await lock.release()
-		return result
+		if (args.task === 'text-completion') {
+			const task = lock.instance.processTextCompletionTask(args)
+			return await waitForResult<TextCompletionTaskResult>(task)
+		}
+		if (args.task === 'chat-completion') {
+			const task = lock.instance.processChatCompletionTask(args)
+			return await waitForResult<ChatCompletionTaskResult>(task)
+		}
+		if (args.task === 'embedding') {
+			const task = lock.instance.processEmbeddingTask(args)
+			return await waitForResult<EmbeddingTaskResult>(task)
+		}
+		if (args.task === 'image-to-text') {
+			const task = lock.instance.processImageToTextTask(args)
+			return await waitForResult<ImageToTextTaskResult>(task)
+		}
+		if (args.task === 'speech-to-text') {
+			const task = lock.instance.processSpeechToTextTask(args)
+			return await waitForResult<SpeechToTextTaskResult>(task)
+		}
+		if (args.task === 'text-to-speech') {
+			const task = lock.instance.processTextToSpeechTask(args)
+			return await waitForResult<TextToSpeechTaskResult>(task)
+		}
+		if (args.task === 'text-to-image') {
+			const task = lock.instance.processTextToImageTask(args)
+			return await waitForResult<TextToImageTaskResult>(task)
+		}
+		if (args.task === 'image-to-image') {
+			const task = lock.instance.processImageToImageTask(args)
+			return await waitForResult<ImageToImageTaskResult>(task)
+		}
+		if (args.task === 'object-detection') {
+			const task = lock.instance.processObjectDetectionTask(args)
+			return await waitForResult<ObjectDetectionTaskResult>(task)
+		}
+
+		// @ts-expect-error
+		throw new Error(`Unknown task type: ${args.task}`)
 	}
-	
+
 	processChatCompletionTask(args: ChatCompletionTaskArgs) {
 		return this.processTask({
 			task: 'chat-completion',
 			...args,
-		}) as Promise<ChatCompletionTaskResult>
+		})
 	}
-	
+
 	processTextCompletionTask(args: TextCompletionTaskArgs) {
 		return this.processTask({
 			task: 'text-completion',
 			...args,
-		}) as Promise<TextCompletionTaskResult>
+		})
 	}
 
 	processEmbeddingTask(args: EmbeddingTaskArgs) {
 		return this.processTask({
 			task: 'embedding',
 			...args,
-		}) as Promise<EmbeddingTaskResult>
+		})
 	}
 
 	processImageToTextTask(args: ImageToTextTaskArgs) {
 		return this.processTask({
 			task: 'image-to-text',
 			...args,
-		}) as Promise<ImageToTextTaskResult>
+		})
 	}
 
 	processSpeechToTextTask(args: SpeechToTextTaskArgs) {
 		return this.processTask({
 			task: 'speech-to-text',
 			...args,
-		}) as Promise<SpeechToTextTaskResult>
+		})
 	}
 
-	 processTextToSpeechTask(args: TextToSpeechTaskArgs) {
+	processTextToSpeechTask(args: TextToSpeechTaskArgs) {
 		return this.processTask({
 			task: 'text-to-speech',
 			...args,
-		}) as Promise<TextToSpeechTaskResult>
+		})
 	}
 
-	 processTextToImageTask(args: TextToImageTaskArgs) {
+	processTextToImageTask(args: TextToImageTaskArgs) {
 		return this.processTask({
 			task: 'text-to-image',
 			...args,
-		}) as Promise<TextToImageTaskResult>
+		})
 	}
-	 processImageToImageTask(args: ImageToImageTaskArgs) {
+	processImageToImageTask(args: ImageToImageTaskArgs) {
 		return this.processTask({
 			task: 'image-to-image',
 			...args,
-		}) as Promise<ImageToImageTaskResult>
+		})
 	}
 
 	processObjectDetectionTask(args: ObjectDetectionTaskArgs) {
 		return this.processTask({
 			task: 'object-detection',
 			...args,
-		}) as Promise<ObjectDetectionTaskResult>
+		})
 	}
 
 	/**
