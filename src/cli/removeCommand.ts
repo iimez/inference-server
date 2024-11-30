@@ -89,15 +89,18 @@ async function removeModels(pattern: string, skipPrompt?: boolean): Promise<void
 	})
 	const matches = matchCachedModels(cacheInfo, pattern)
 	if (matches.length === 0) {
-		console.log('No models found matching the pattern')
+		console.error(chalk.red(`No models found matching the given pattern`))
 		return
 	}
 	if (!skipPrompt) {
 		const treeLines = renderTreeView(matches)
 		console.log(treeLines.join('\n'))
 		const { totalSize, fileCount } = calculateTreeAggs(matches)
-		console.log(chalk.cyan(`Total size: ${prettyBytes(totalSize)} bytes`))
-		const confirmed = await promptConfirmation(`Delete ${fileCount} files?`)
+		// console.log(chalk.cyan(`Total size: ${prettyBytes(totalSize)} bytes`))
+		const fileText = fileCount === 1 ? `one file` : `${fileCount} files`
+		const modelText = matches.length === 1 ? chalk.bold(matches[0].relPath) : `${matches.length} models`
+		console.log(`\nThis will remove ${fileText} freeing ${prettyBytes(totalSize)} total.`)
+		const confirmed = await promptConfirmation(`Delete ${modelText} from disk?`)
 		if (!confirmed) {
 			console.log('Aborted')
 			return
@@ -105,11 +108,13 @@ async function removeModels(pattern: string, skipPrompt?: boolean): Promise<void
 	}
 
 	try {
-		console.log('Deleting files...')
+		// const subject = matches.length === 1 ? 'model' : 'models'
+		const modelText = matches.length === 1 ? matches[0].name : `${matches.length} models`
+		console.log(`Deleting ${modelText} ...`)
 		await deleteFiles(matches)
-		console.log(chalk.green('Deleted files'))
+		console.log(chalk.green('Done'))
 	} catch (error) {
-		console.error(chalk.red(`Error deleting files: ${(error as Error).message}`))
+		console.error(chalk.red(`Error during removal: ${(error as Error).message}`))
 	}
 }
 
