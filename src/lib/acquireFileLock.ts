@@ -22,7 +22,7 @@ export function acquireFileLock(fileOrDirPath: string, signal?: AbortSignal): Pr
 	const isLocked = lockfile.checkSync(fileOrDirPath)
 	const lockExists = fs.existsSync(`${fileOrDirPath}.lock`)
 	if (!isLocked && lockExists) {
-		fs.unlinkSync(`${fileOrDirPath}.lock`)
+		fs.rmSync(`${fileOrDirPath}.lock`, { recursive: true, force: true });
 	}
 	return new Promise((resolve, reject) => {
 		lockfile.lock(fileOrDirPath, { retries: { forever: true } })
