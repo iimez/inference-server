@@ -203,7 +203,7 @@ export async function createInstance({ config, log }: EngineContext<NodeLlamaCpp
 				})
 			} else {
 				// assume input is a JSON schema object
-				llamaGrammars[key] = new LlamaJsonSchemaGrammar(llama, input as GbnfJsonSchema)
+				llamaGrammars[key] = new LlamaJsonSchemaGrammar<GbnfJsonSchema>(llama, input as GbnfJsonSchema)
 			}
 		}
 	}

@@ -36,7 +36,7 @@ async function prepareIncomingMessages(
 	const resultMessages: ChatMessage[] = []
 	
 	for (const message of messages) {
-		const role = messageRoleMap[message.role]
+		const role = message.role
 		const resultMessage: any = {
 			role,
 			content: [],

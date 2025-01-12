@@ -134,15 +134,6 @@ async function disposeModelComponents(modelComponents: TransformersJsModelCompon
 	}
 }
 
-interface TransformersJsDownloadProgress extends ProgressInfo {
-	// status: 'progress' | 'done' | 'initiate'
-	// name: string
-	// file: string
-	// progress: number
-	// loaded: number
-	// total: number
-}
-
 export async function prepareModel(
 	{ config, log }: EngineContext<TransformersJsModelConfig>,
 	onProgress?: (progress: FileDownloadProgress) => void,
@@ -168,7 +159,7 @@ export async function prepareModel(
 	) => {
 		const modelClass = normalizeTransformersJsClass<TransformersJsModelClass>(modelOpts.modelClass, AutoModel)
 		const downloadPromises: Record<string, Promise<any> | undefined> = {}
-		const progressCallback = (progress: TransformersJsDownloadProgress) => {
+		const progressCallback = (progress: ProgressInfo) => {
 			if (onProgress && progress.status === 'progress') {
 				onProgress({
 					file: env.cacheDir + progress.name + '/' + progress.file,
@@ -1042,7 +1033,7 @@ export async function processTextToSpeechTask(
 		throw new Error('No waveform generated')
 	}
 
-	const sampleRate = modelComponents.processor!.feature_extractor.config.sampling_rate
+	const sampleRate = modelComponents.processor!.feature_extractor!.config.sampling_rate
 
 	return {
 		audio: {
@@ -1093,7 +1084,7 @@ export async function processObjectDetectionTask(
 		})
 
 		// @ts-ignore
-		const processed = modelComponents.processor.feature_extractor.post_process_object_detection(
+		const processed = modelComponents.processor.image_processor.post_process_object_detection(
 			output,
 			task.threshold ?? 0.5,
 			[[image.height, image.width]],
@@ -1113,10 +1104,10 @@ export async function processObjectDetectionTask(
 		}
 	} else {
 		// @ts-ignore
-		const { pixel_values, pixel_mask } = await modelComponents.processor.feature_extractor([rawImage])
+		const { pixel_values, pixel_mask } = await modelComponents.processor([rawImage])
 		const output = await modelComponents.model({ pixel_values, pixel_mask })
 		// @ts-ignore
-		const processed = modelComponents.processor.feature_extractor.post_process_object_detection(
+		const processed = modelComponents.processor.image_processor.post_process_object_detection(
 			output,
 			task.threshold ?? 0.5,
 			[[image.height, image.width]],

@@ -11,10 +11,6 @@ export const finishReasonMap: Record<CompletionFinishReason, OpenAI.ChatCompleti
 	abort: 'stop',
 } as const
 
-export const messageRoleMap: Record<OpenAI.ChatCompletionMessageParam['role'], ChatMessage['role']> = {
-	user: 'user',
-	system: 'system',
-	assistant: 'assistant',
-	tool: 'tool',
+export const messageRoleMap: Record<string, string> = {
 	function: 'tool',
 }
