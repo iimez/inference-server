@@ -12,13 +12,15 @@ import {
 	runGenerationContextShiftTest,
 	runIngestionContextShiftTest,
 	runFunctionCallTest,
-	runSequentialFunctionCallTest,
+	runCombinedFunctionCallTest,
 	runParallelFunctionCallTest,
 	runBuiltInGrammarTest,
 	runRawGBNFGrammarTest,
 	runJsonSchemaGrammarTest,
 	runTimeoutTest,
 	runCancellationTest,
+	runFunctionCallWithLeadingResponseTest,
+	runReversedCombinedFunctionCallTest,
 } from './lib/index.js'
 import { createChatCompletion, createTextCompletion, parseInstanceId } from '../util/completions.js'
 
@@ -80,18 +82,7 @@ suite('function calling', async () => {
 	const inferenceServer = new InferenceServer({
 		log: 'debug',
 		models: {
-			test: {
-				task: 'text-completion',
-				engine: 'node-llama-cpp',
-				url: 'https://huggingface.co/meetkai/functionary-small-v3.2-GGUF/blob/main/functionary-small-v3.2.Q4_0.gguf',
-				sha256: 'c0afdbbffa498a8490dea3401e34034ac0f2c6e337646513a7dbc04fcef1c3a4',
-				contextSize: 4096,
-				// TODO: try make some chat wrappers?
-				// url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/blob/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
-				// sha256: '6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff',
-				// url: 'https://huggingface.co/katanemo/Arch-Function-3B.gguf/blob/main/Arch-Function-3B-Q4_K_M.gguf',
-				// sha256: '7172964e86c7ffa28c7931f1bfb846e4c9d304b74439f14c63de0e918d711f0b',
-			},
+			test: testModel,
 		},
 	})
 	beforeAll(async () => {
@@ -104,11 +95,17 @@ suite('function calling', async () => {
 	test('basic function call', async () => {
 		await runFunctionCallTest(inferenceServer)
 	})
-	test('sequential function calls', async () => {
-		await runSequentialFunctionCallTest(inferenceServer)
+	test('combined function calls', async () => {
+		await runCombinedFunctionCallTest(inferenceServer)
+		await runReversedCombinedFunctionCallTest(inferenceServer)
 	})
+
 	test('parallel function calls', async () => {
 		await runParallelFunctionCallTest(inferenceServer)
+	})
+
+	test('function call with leading response', async () => {
+		await runFunctionCallWithLeadingResponseTest(inferenceServer)
 	})
 })
 

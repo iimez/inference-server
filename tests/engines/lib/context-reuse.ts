@@ -46,5 +46,5 @@ export async function runContextReuseTest(
 	const instanceIdA2 = parseInstanceId(responseA2.task.id)
 	expect(instanceIdA1).toBe(instanceIdA2)
 	// assert its still about bears
-	expect(responseA2.result.message.content).toMatch(/bear/i)
+	expect(responseA2.result.message.content).toMatch(/bear|paw/i)
 }

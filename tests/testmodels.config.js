@@ -15,12 +15,6 @@ export const config = {
 			engine: 'node-llama-cpp',
 			task: 'text-completion',
 		},
-		'functionary-small-3.2': {
-			engine: 'node-llama-cpp',
-			url: 'https://huggingface.co/meetkai/functionary-small-v3.2-GGUF/blob/main/functionary-small-v3.2.Q4_0.gguf',
-			sha256: 'c0afdbbffa498a8490dea3401e34034ac0f2c6e337646513a7dbc04fcef1c3a4',
-			task: 'text-completion',
-		},
 		'gpt4all-nomic-text-embed': {
 			url: 'https://gpt4all.io/models/gguf/nomic-embed-text-v1.f16.gguf',
 			engine: 'gpt4all',

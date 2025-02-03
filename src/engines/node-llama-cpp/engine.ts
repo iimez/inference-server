@@ -27,6 +27,7 @@ import {
 	LLamaChatContextShiftOptions,
 	LlamaContextOptions,
 	ChatWrapper,
+	ChatModelFunctionCall,
 } from 'node-llama-cpp'
 import { StopGenerationTrigger } from 'node-llama-cpp/dist/utils/StopGenerationDetector'
 import {
@@ -367,10 +368,11 @@ export async function processChatCompletionTask(
 
 	// see if the user submitted any function call results
 	const maxParallelCalls = task.tools?.maxParallelCalls ?? config.tools?.maxParallelCalls
-	const supportsParallelFunctionCalling =
-		instance.chat.chatWrapper.settings.functions.parallelism != null || !!maxParallelCalls
-	const resolvedFunctionCalls = []
+	const chatWrapperSupportsParallelism = !!instance.chat.chatWrapper.settings.functions.parallelism
+	const supportsParallelFunctionCalling = chatWrapperSupportsParallelism && !!maxParallelCalls
+	const resolvedFunctionCalls: ChatModelFunctionCall[] = []
 	const functionCallResultMessages = task.messages.filter((m) => m.role === 'tool') as ToolCallResultMessage[]
+	let startsNewChunk = supportsParallelFunctionCalling
 	for (const message of functionCallResultMessages) {
 		if (!instance.pendingFunctionCalls[message.callId]) {
 			log(LogLevels.warn, `Received function result for non-existing call id "${message.callId}`)
@@ -382,46 +384,20 @@ export async function processChatCompletionTask(
 		})
 		const functionCall = instance.pendingFunctionCalls[message.callId]
 		const functionDef = functionDefinitions[functionCall.functionName]
-		resolvedFunctionCalls.push({
+		const resolvedFunctionCall: ChatModelFunctionCall = {
+			type: 'functionCall',
 			name: functionCall.functionName,
 			description: functionDef?.description,
 			params: functionCall.params,
 			result: message.content,
 			rawCall: functionCall.raw,
-			startsNewChunk: supportsParallelFunctionCalling,
-		})
-		delete instance.pendingFunctionCalls[message.callId]
-	}
-	// if we resolved any results, add them to history
-	if (resolvedFunctionCalls.length) {
-		instance.chatHistory.push({
-			type: 'model',
-			response: resolvedFunctionCalls.map((call) => {
-				return {
-					type: 'functionCall',
-					...call,
-				}
-			}),
-		})
-	}
-
-	// add the new user message to the chat history
-	let assistantPrefill: string = ''
-	const lastMessage = task.messages[task.messages.length - 1]
-	if (lastMessage.role === 'user' && lastMessage.content) {
-		const newUserText = flattenMessageTextContent(lastMessage.content)
-		if (newUserText) {
-			instance.chatHistory.push({
-				type: 'user',
-				text: newUserText,
-			})
 		}
-	} else if (lastMessage.role === 'assistant') {
-		// use last message as prefill for response, if its an assistant message
-		assistantPrefill = flattenMessageTextContent(lastMessage.content)
-	} else if (!resolvedFunctionCalls.length) {
-		log(LogLevels.warn, 'Last message is not valid for chat completion. This is likely a mistake.', lastMessage)
-		throw new Error('Invalid last chat message')
+		if (startsNewChunk) {
+			resolvedFunctionCall.startsNewChunk = true
+			startsNewChunk = false
+		}
+		resolvedFunctionCalls.push(resolvedFunctionCall)
+		delete instance.pendingFunctionCalls[message.callId]
 	}
 
 	// only grammar or functions can be used, not both.
@@ -446,8 +422,59 @@ export async function processChatCompletionTask(
 			})
 		}
 	}
-	const defaults = config.completionDefaults ?? {}
+
 	let lastEvaluation: LlamaChatResponse['lastEvaluation'] | undefined = instance.lastEvaluation
+
+	const appendResolvedFunctionCalls = (history: ChatHistoryItem[], response: ChatModelFunctionCall[]) => {
+		const lastMessage = history[history.length - 1]
+		// append to existing response item if last message in history is a model response
+		if (lastMessage.type === 'model') {
+			const lastMessageResponse = lastMessage as ChatModelResponse
+			if (Array.isArray(response)) {
+				lastMessageResponse.response.push(...response)
+				// if we dont add a fresh empty message llama 3.2 3b will keep trying to call functions, not sure why this is
+				history.push({
+					type: 'model',
+					response: [],
+				})
+			}
+			return
+		}
+		// otherwise append a new one with the calls
+		history.push({
+			type: 'model',
+			response: response,
+		})
+	}
+
+	// if the incoming messages resolved any pending function calls, add them to history
+	if (resolvedFunctionCalls.length) {
+		appendResolvedFunctionCalls(instance.chatHistory, resolvedFunctionCalls)
+		if (lastEvaluation?.contextWindow) {
+			appendResolvedFunctionCalls(lastEvaluation.contextWindow, resolvedFunctionCalls)
+		}
+	}
+
+	// add the new user message to the chat history
+	let assistantPrefill: string = ''
+	const lastMessage = task.messages[task.messages.length - 1]
+	if (lastMessage.role === 'user' && lastMessage.content) {
+		const newUserText = flattenMessageTextContent(lastMessage.content)
+		if (newUserText) {
+			instance.chatHistory.push({
+				type: 'user',
+				text: newUserText,
+			})
+		}
+	} else if (lastMessage.role === 'assistant') {
+		// use last message as prefill for response, if its an assistant message
+		assistantPrefill = flattenMessageTextContent(lastMessage.content)
+	} else if (!resolvedFunctionCalls.length) {
+		log(LogLevels.warn, 'Last message is not valid for chat completion. This is likely a mistake.', lastMessage)
+		throw new Error('Invalid last chat message')
+	}
+
+	const defaults = config.completionDefaults ?? {}
 	let newChatHistory = instance.chatHistory.slice()
 	let newContextWindowChatHistory = !lastEvaluation?.contextWindow ? undefined : instance.chatHistory.slice()
 
@@ -467,7 +494,8 @@ export async function processChatCompletionTask(
 
 	const functionsOrGrammar = inputFunctions
 		? {
-				functions: { ...inputFunctions }, // clone the dict because it gets mutated below
+				// clone the input funcs because the dict gets mutated in the loop below to enable preventFurtherCalls
+				functions: { ...inputFunctions },
 				documentFunctionParams: task.tools?.documentParams ?? config.tools?.documentParams,
 				maxParallelFunctionCalls: maxParallelCalls,
 				onFunctionCall: (functionCall: LlamaChatResponseFunctionCall<any>) => {
@@ -481,6 +509,9 @@ export async function processChatCompletionTask(
 	const initialTokenMeterState = instance.chat.sequence.tokenMeter.getState()
 	let completionResult: LlamaChatResult
 	while (true) {
+		// console.debug('before eval newChatHistory', JSON.stringify(newChatHistory, null, 2))
+		// console.debug('before eval newContextWindowChatHistory', JSON.stringify(newContextWindowChatHistory, null, 2))
+
 		const {
 			functionCalls,
 			lastEvaluation: currentLastEvaluation,
@@ -525,6 +556,9 @@ export async function processChatCompletionTask(
 		lastEvaluation = currentLastEvaluation
 		newChatHistory = lastEvaluation.cleanHistory
 
+		// console.debug('after eval newChatHistory', JSON.stringify(newChatHistory, null, 2))
+		// console.debug('after eval newContextWindowChatHistory', JSON.stringify(newContextWindowChatHistory, null, 2))
+
 		if (functionCalls) {
 			// find leading immediately invokable function calls (=have a handler function)
 			const invokableFunctionCalls = []
@@ -537,14 +571,23 @@ export async function processChatCompletionTask(
 				}
 			}
 
-			// resolve their results.
+			// if the model output text before the call, pass it on into the function handlers
+			// the response tokens will also be available via onChunk but this is more convenient
+			const lastMessage = newChatHistory[newChatHistory.length - 1] as ChatModelResponse
+			const lastResponsePart = lastMessage.response[lastMessage.response.length - 1]
+			let leadingResponseText: string | undefined
+			if (typeof lastResponsePart === 'string' && lastResponsePart) {
+				leadingResponseText = lastResponsePart
+			}
+
+			// resolve function call results
 			const results = await Promise.all(
 				invokableFunctionCalls.map(async (functionCall) => {
 					const functionDef = functionDefinitions[functionCall.functionName]
 					if (!functionDef) {
 						throw new Error(`The model tried to call undefined function "${functionCall.functionName}"`)
 					}
-					let functionCallResult = await functionDef.handler!(functionCall.params)
+					let functionCallResult = await functionDef.handler!(functionCall.params, leadingResponseText)
 					log(LogLevels.debug, 'Function handler resolved', {
 						function: functionCall.functionName,
 						args: functionCall.params,
@@ -571,8 +614,7 @@ export async function processChatCompletionTask(
 				}),
 			)
 			newContextWindowChatHistory = lastEvaluation.contextWindow
-			// let startNewChunk = supportsParallelFunctionCalling
-			let startNewChunk = true
+			let startsNewChunk = supportsParallelFunctionCalling
 			// add results to chat history in the order they were called
 			for (const callResult of results) {
 				newChatHistory = addFunctionCallToChatHistory({
@@ -582,7 +624,7 @@ export async function processChatCompletionTask(
 					callParams: callResult.functionCall.params,
 					callResult: callResult.functionCallResult,
 					rawCall: callResult.functionCall.raw,
-					startsNewChunk: startNewChunk,
+					startsNewChunk: startsNewChunk,
 				})
 				newContextWindowChatHistory = addFunctionCallToChatHistory({
 					chatHistory: newContextWindowChatHistory,
@@ -591,12 +633,12 @@ export async function processChatCompletionTask(
 					callParams: callResult.functionCall.params,
 					callResult: callResult.functionCallResult,
 					rawCall: callResult.functionCall.raw,
-					startsNewChunk: startNewChunk,
+					startsNewChunk: startsNewChunk,
 				})
-				startNewChunk = false
+				startsNewChunk = false
 			}
 
-			// check if all function calls were immediately evokable
+			// if functions without handler have been called, return the calls as messages
 			const remainingFunctionCalls = functionCalls.slice(invokableFunctionCalls.length)
 
 			if (remainingFunctionCalls.length === 0) {
@@ -606,6 +648,8 @@ export async function processChatCompletionTask(
 				continue
 			} else {
 				// if no, return the function calls and skip generation
+				instance.lastEvaluation = lastEvaluation
+				instance.chatHistory = newChatHistory
 				completionResult = {
 					responseText: null,
 					stopReason: 'functionCalls',
@@ -642,7 +686,7 @@ export async function processChatCompletionTask(
 			return !functionDef.handler
 		})
 
-		// TODO write a test that triggers a parallel call to a deferred function and to an IE function
+		// TODO write a test that triggers a parallel call to a handlerless function and to a function with one
 		const trailingFunctionCalls = completionResult.functionCalls.filter((call) => {
 			const functionDef = functionDefinitions[call.functionName]
 			return functionDef.handler
@@ -669,6 +713,8 @@ export async function processChatCompletionTask(
 	}
 
 	const tokenDifference = instance.chat.sequence.tokenMeter.diff(initialTokenMeterState)
+	// console.debug('final chatHistory', JSON.stringify(instance.chatHistory, null, 2))
+	// console.debug('final lastEvaluation', JSON.stringify(instance.lastEvaluation, null, 2))
 	return {
 		finishReason: mapFinishReason(completionResult.stopReason),
 		message: assistantMessage,

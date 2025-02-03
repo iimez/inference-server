@@ -7,14 +7,17 @@ import { InferenceServer } from '#package/server.js'
 const chatModel = 'chat'
 const embeddingsModel = 'text-embed'
 
-function runOpenAITests(client: OpenAI) {
+interface SkipTests {
+	grammar?: boolean
+	functionCalling?: boolean
+}
+
+function runOpenAITests(client: OpenAI, skipTests?: SkipTests) {
 	test('chat.completions.create', async () => {
 		const completion = await client.chat.completions.create({
 			model: chatModel,
 			temperature: 0,
-			messages: [
-				{ role: 'user', content: 'This is a test. Just answer with "Test".' },
-			],
+			messages: [{ role: 'user', content: 'This is a test. Just answer with "Test".' }],
 		})
 		expect(completion.choices[0].message.content).toContain('Test')
 	})
@@ -24,9 +27,7 @@ function runOpenAITests(client: OpenAI) {
 			model: chatModel,
 			temperature: 0,
 			stream: true,
-			messages: [
-				{ role: 'user', content: 'This is a test. Just answer with "Test".' },
-			],
+			messages: [{ role: 'user', content: 'This is a test. Just answer with "Test".' }],
 		})
 		let receivedTestChunk = false
 		for await (const chunk of completion) {
@@ -42,9 +43,7 @@ function runOpenAITests(client: OpenAI) {
 			stream_options: { include_usage: true },
 			model: chatModel,
 			temperature: 0,
-			messages: [
-				{ role: 'user', content: 'This is a test. Just answer with "Test".' },
-			],
+			messages: [{ role: 'user', content: 'This is a test. Just answer with "Test".' }],
 		})
 		let receivedTestChunk = false
 		for await (const chunk of completion) {
@@ -88,9 +87,7 @@ function runOpenAITests(client: OpenAI) {
 			}
 			finishReason = chunk.choices[0].finish_reason
 		}
-		expect(tokens.join('')).toContain(
-			'but some animals are more equal than others',
-		)
+		expect(tokens.join('')).toContain('but some animals are more equal than others')
 		expect(finishReason).toBe('stop')
 	})
 
@@ -104,98 +101,98 @@ function runOpenAITests(client: OpenAI) {
 		expect(Number.isFinite(res.data[0].embedding[0])).toBe(true)
 	})
 
-	test('response_format json_object / json grammar', async () => {
-		const completion = await client.chat.completions.create({
-			model: chatModel,
-			temperature: 0,
-			response_format: { type: 'json_object' },
-			messages: [
-				{
-					role: 'user',
-					content:
-						'Answer with a JSON object containing the key "test" with the value "test". And add an array of cats to it.',
-				},
-			],
+	if (!skipTests?.grammar) {
+		test('response_format json_object / json grammar', async () => {
+			const completion = await client.chat.completions.create({
+				model: chatModel,
+				temperature: 0,
+				response_format: { type: 'json_object' },
+				messages: [
+					{
+						role: 'user',
+						content:
+							'Answer with a JSON object containing the key "test" with the value "test". And add an array of cats to it.',
+					},
+				],
+			})
+			expect(completion.choices[0].message.content).toBeTruthy()
+			const response = JSON.parse(completion.choices[0].message.content!)
+			expect(response.test).toMatch(/test/)
+			expect(response.cats).toBeInstanceOf(Array)
 		})
-		expect(completion.choices[0].message.content).toBeTruthy()
-		const response = JSON.parse(completion.choices[0].message.content!)
-		expect(response.test).toMatch(/test/)
-		expect(response.cats).toBeInstanceOf(Array)
-	})
+	}
 
-	test('function call', async () => {
-		const completion = await client.chat.completions.create({
-			model: chatModel,
-			temperature: 0,
-			tools: [
-				{
-					type: 'function',
-					function: {
-						name: 'getRandomNumber',
-						description: 'Generate a random integer in given range',
-						parameters: {
-							type: 'object',
-							properties: {
-								min: { type: 'number' },
-								max: { type: 'number' },
+	if (!skipTests?.functionCalling) {
+		test('function call', async () => {
+			const completion = await client.chat.completions.create({
+				model: chatModel,
+				temperature: 0,
+				tools: [
+					{
+						type: 'function',
+						function: {
+							name: 'getRandomNumber',
+							description: 'Generate a random integer in given range',
+							parameters: {
+								type: 'object',
+								properties: {
+									min: { type: 'number' },
+									max: { type: 'number' },
+								},
 							},
 						},
 					},
-				},
-			],
-			messages: [{ role: 'user', content: "Let's roll the die." }],
+				],
+				messages: [{ role: 'user', content: "Let's roll the die." }],
+			})
+			expect(completion.choices[0].message.content).toBeNull()
+			expect(completion.choices[0].message.tool_calls).toBeInstanceOf(Array)
+			expect(completion.choices[0].message.tool_calls![0].type).toBe('function')
+			expect(completion.choices[0].message.tool_calls![0].function.name).toBe('getRandomNumber')
+			expect(completion.choices[0].message.tool_calls![0].function.arguments).toBe('{"min":1,"max":6}')
 		})
-		expect(completion.choices[0].message.content).toBeNull()
-		expect(completion.choices[0].message.tool_calls).toBeInstanceOf(Array)
-		expect(completion.choices[0].message.tool_calls![0].type).toBe('function')
-		expect(completion.choices[0].message.tool_calls![0].function.name).toBe(
-			'getRandomNumber',
-		)
-		expect(
-			completion.choices[0].message.tool_calls![0].function.arguments,
-		).toBe('{"min":1,"max":6}')
-	})
 
-	test('function call with streaming', async () => {
-		const completion = await client.beta.chat.completions.stream({
-			stream_options: { include_usage: true },
-			model: chatModel,
-			temperature: 0,
-			tools: [
-				{
-					type: 'function',
-					function: {
-						name: 'getRandomNumber',
-						description: 'Generate a random integer in given range',
-						parameters: {
-							type: 'object',
-							properties: {
-								min: { type: 'number' },
-								max: { type: 'number' },
+		test('function call with streaming', async () => {
+			const completion = await client.beta.chat.completions.stream({
+				stream_options: { include_usage: true },
+				model: chatModel,
+				temperature: 0,
+				tools: [
+					{
+						type: 'function',
+						function: {
+							name: 'getRandomNumber',
+							description: 'Generate a random integer in given range',
+							parameters: {
+								type: 'object',
+								properties: {
+									min: { type: 'number' },
+									max: { type: 'number' },
+								},
 							},
 						},
 					},
-				},
-			],
-			messages: [{ role: 'user', content: "Let's roll the die." }],
-		})
-		let receivedToolCallChunk = false
-		for await (const chunk of completion) {
-			if (chunk.choices[0]?.delta?.tool_calls?.length) {
-				receivedToolCallChunk = true
+				],
+				messages: [{ role: 'user', content: "Let's roll the die." }],
+			})
+			let receivedToolCallChunk = false
+			for await (const chunk of completion) {
+				if (chunk.choices[0]?.delta?.tool_calls?.length) {
+					receivedToolCallChunk = true
+				}
 			}
-		}
-		expect(receivedToolCallChunk).toBe(true)
-		
-		const finalResult = await completion.finalChatCompletion()
-		expect(finalResult.choices[0].message.tool_calls).toBeInstanceOf(Array)
-		expect(finalResult.choices[0].message.tool_calls![0].type).toBe('function')
-		expect(finalResult.choices[0].message.tool_calls![0].function.name).toBe('getRandomNumber')
-		expect(finalResult.choices[0].message.tool_calls![0].function.arguments).toBe('{"min":1,"max":6}')
-		expect(finalResult.model).toBe(chatModel)
-		expect(finalResult.usage).toBeDefined()
-		expect(finalResult.usage?.completion_tokens).toBeGreaterThan(0)
-	})
+			expect(receivedToolCallChunk).toBe(true)
+
+			const finalResult = await completion.finalChatCompletion()
+			expect(finalResult.choices[0].message.tool_calls).toBeInstanceOf(Array)
+			expect(finalResult.choices[0].message.tool_calls![0].type).toBe('function')
+			expect(finalResult.choices[0].message.tool_calls![0].function.name).toBe('getRandomNumber')
+			expect(finalResult.choices[0].message.tool_calls![0].function.arguments).toBe('{"min":1,"max":6}')
+			expect(finalResult.model).toBe(chatModel)
+			expect(finalResult.usage).toBeDefined()
+			expect(finalResult.usage?.completion_tokens).toBeGreaterThan(0)
+		})
+	}
 }
 
 suite('OpenAI API (node-llama-cpp)', () => {
@@ -219,7 +216,7 @@ suite('OpenAI API (node-llama-cpp)', () => {
 					device: {
 						gpu: false,
 						cpuThreads: 4,
-					}
+					},
 				},
 				[chatModel]: {
 					url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/blob/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
@@ -264,17 +261,17 @@ suite('OpenAI API (gpt4all)', () => {
 					device: {
 						gpu: false,
 						cpuThreads: 4,
-					}
+					},
 				},
 				[chatModel]: {
 					url: 'https://gpt4all.io/models/gguf/Phi-3-mini-4k-instruct.Q4_0.gguf',
 					minInstances: 1,
 					engine: 'gpt4all',
 					task: 'text-completion',
-				}
+				},
 			},
 		})
-		
+
 		await inferenceServer.start()
 		webServer = createExpressServer(inferenceServer)
 		webServer.listen(3001)
@@ -285,5 +282,8 @@ suite('OpenAI API (gpt4all)', () => {
 		webServer.close()
 	})
 
-	runOpenAITests(openai)
+	runOpenAITests(openai, {
+		grammar: true,
+		functionCalling: true,
+	})
 })

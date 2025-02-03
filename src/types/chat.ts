@@ -67,6 +67,6 @@ export type ToolCallResult = string | ToolCallResultObject
 export interface ToolDefinition<TParams extends Record<string, any> = any> {
 	description?: string
 	parameters?: ToolDefinitionParams<TParams>
-	handler?: (params: TParams) => Promise<ToolCallResult>
+	handler?: (params: TParams, leadingResponse?: string) => Promise<ToolCallResult>
 }
 
