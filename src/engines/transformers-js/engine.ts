@@ -63,7 +63,6 @@ import {
 	TransformersJsTokenizerClass,
 } from '#package/engines/transformers-js/types.js'
 import { flattenMessageTextContent } from '#package/lib/flattenMessageTextContent.js'
-import { sign } from 'node:crypto'
 
 export interface TransformersJsModelComponents<TModel = PreTrainedModel> {
 	model?: TModel
