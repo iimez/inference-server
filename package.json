@@ -1,6 +1,6 @@
 {
 	"name": "inference-server",
-	"version": "1.0.0-beta.27",
+	"version": "1.0.0-beta.28",
 	"description": "Libraries and server to build AI applications. Adapters to various native bindings allowing local inference. Integrate it with your application, or use as a microservice.",
 	"main": "dist/index.js",
 	"source": "src/index.ts",
@@ -87,7 +87,7 @@
 		"ipull": "^3.9.2",
 		"micromatch": "^4.0.8",
 		"nanoid": "^5.0.9",
-		"p-queue": "^8.0.1",
+		"p-queue": "^8.1.0",
 		"pretty-bytes": "^6.1.1",
 		"pretty-ms": "^9.2.0",
 		"proper-lockfile": "^4.1.2",
@@ -96,24 +96,24 @@
 		"yargs": "^17.7.2"
 	},
 	"devDependencies": {
-		"@huggingface/transformers": "^3.2.4",
+		"@huggingface/transformers": "^3.3.2",
 		"@lmagder/node-stable-diffusion-cpp": "^0.1.7",
 		"@types/cors": "^2.8.17",
 		"@types/express": "^5.0.0",
 		"@types/micromatch": "^4.0.9",
-		"@types/node": "^22.10.5",
+		"@types/node": "^22.13.0",
 		"@types/proper-lockfile": "^4.1.4",
 		"@types/supertest": "^6.0.2",
 		"@types/yargs": "^17.0.33",
 		"concurrently": "^9.1.2",
 		"cross-env": "^7.0.3",
 		"gpt4all": "^4.0.0",
-		"node-llama-cpp": "^3.4.0",
-		"openai": "^4.78.1",
+		"node-llama-cpp": "^3.5.0",
+		"openai": "^4.82.0",
 		"supertest": "^7.0.0",
 		"tsc-alias": "^1.8.10",
 		"typescript": "^5.7.3",
 		"vite-tsconfig-paths": "^5.1.4",
-		"vitest": "^2.1.8"
+		"vitest": "^3.0.4"
 	}
 }
