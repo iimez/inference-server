@@ -195,7 +195,7 @@ export class ModelPool extends EventEmitter3<ModelPoolEvent> {
 		// and prevent spawning more instances if the gpu is already locked.
 		const requiresGpu = !!modelConfig.device?.gpu
 		if (requiresGpu && this.gpuLock && modelConfig.device?.gpu !== 'auto') {
-			this.log(LogLevels.debug, 'Cannot spawn new instance: model requires gpu, but its already in use', {
+			this.log(LogLevels.verbose, 'Cannot spawn new instance: model requires gpu, but its already in use', {
 				model: modelId,
 			})
 			return false
@@ -204,7 +204,7 @@ export class ModelPool extends EventEmitter3<ModelPoolEvent> {
 		const maxInstances = modelConfig.maxInstances ?? 1
 		const currentInstances = Object.values(this.instances).filter((instance) => instance.modelId === modelId)
 		if (currentInstances.length >= maxInstances) {
-			this.log(LogLevels.debug, 'Cannot spawn new instance: maxInstances reached', {
+			this.log(LogLevels.verbose, 'Cannot spawn new instance: maxInstances reached', {
 				model: modelId,
 				curent: currentInstances.length,
 				max: maxInstances,
