@@ -8,7 +8,8 @@ import {
 	TextToSpeechParams,
 	TextToImageParams,
 	ImageToImageParams,
-	InferenceTaskResult,
+	TextClassificationParams,
+	TaskResult,
 } from '#package/types/engine.js'
 
 export type TaskKind =
@@ -21,6 +22,7 @@ export type TaskKind =
 	| 'speech-to-text'
 	| 'text-to-speech'
 	| 'object-detection'
+	| 'text-classification'
 
 export interface TextCompletionChunk {
 	tokens: number[]
@@ -48,11 +50,24 @@ export type TextCompletionTaskArgs = TextCompletionParams & TextCompletionProces
 export type ChatCompletionTaskArgs = ChatCompletionParams & TextCompletionProcessingOptions
 export type EmbeddingTaskArgs = EmbeddingParams & ProcessingOptions
 export type ObjectDetectionTaskArgs = ObjectDetectionParams & ProcessingOptions
+export type TextClassificationTaskArgs = TextClassificationParams & ProcessingOptions
 export type ImageToTextTaskArgs = ImageToTextParams & ProcessingOptions
 export type SpeechToTextTaskArgs = SpeechToTextParams & SpeechToTextProcessingOptions
 export type TextToSpeechTaskArgs = TextToSpeechParams & TextToSpeechProcessingOptions
 export type TextToImageTaskArgs = TextToImageParams & ProcessingOptions
 export type ImageToImageTaskArgs = ImageToImageParams & ProcessingOptions
+
+export type TaskArgs =
+	| TextCompletionTaskArgs
+	| ChatCompletionTaskArgs
+	| EmbeddingTaskArgs
+	| ObjectDetectionTaskArgs
+	| ImageToTextTaskArgs
+	| ImageToImageTaskArgs
+	| TextToImageTaskArgs
+	| TextToSpeechTaskArgs
+	| SpeechToTextTaskArgs
+	| TextClassificationTaskArgs
 
 export interface TextCompletionInferenceTaskArgs extends TextCompletionTaskArgs {
 	task: 'text-completion'
@@ -82,6 +97,10 @@ export interface ObjectDetectionInferenceTaskArgs extends ObjectDetectionTaskArg
 	task: 'object-detection'
 }
 
+export interface TextClassificationInferenceTaskArgs extends TextClassificationTaskArgs {
+	task: 'text-classification'
+}
+
 export interface TextToSpeechInferenceTaskArgs extends TextToSpeechTaskArgs {
 	task: 'text-to-speech'
 }
@@ -100,8 +119,9 @@ export type InferenceTaskArgs =
 	| TextToImageInferenceTaskArgs
 	| TextToSpeechInferenceTaskArgs
 	| SpeechToTextInferenceTaskArgs
+	| TextClassificationInferenceTaskArgs
 
-export interface InferenceTask<TResult = InferenceTaskResult> {
+export interface InferenceTask<TResult = TaskResult> {
 	id: string
 	model: string
 	createdAt: Date

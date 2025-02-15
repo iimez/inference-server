@@ -15,6 +15,21 @@ import {
 	TextToSpeechTaskArgs,
 	TextToImageTaskArgs,
 	ObjectDetectionTaskArgs,
+	TextClassificationTaskArgs,
+	TaskKind,
+	TaskProcessor,
+	TaskProcessorName,
+	TaskArgs,
+	EmbeddingTaskResult,
+	TaskResult,
+	InferenceTask,
+	ImageToTextTaskResult,
+	ImageToImageTaskResult,
+	SpeechToTextTaskResult,
+	TextToSpeechTaskResult,
+	TextToImageTaskResult,
+	TextClassificationTaskResult,
+	ObjectDetectionTaskResult,
 } from '#package/types/index.js'
 import { calculateContextIdentity } from '#package/lib/calculateContextIdentity.js'
 import { LogLevels, Logger, createLogger, withLogMeta } from '#package/lib/logger.js'
@@ -406,42 +421,47 @@ export class ModelInstance<TEngineRef = unknown> {
 		}
 	}
 
-	processEmbeddingTask(args: EmbeddingTaskArgs) {
-		if (!('processEmbeddingTask' in this.engine)) {
-			throw new Error(`Engine "${this.config.engine}" does not implement embedding`)
+	private processTask<T extends TaskResult>(
+		taskType: TaskKind,
+		processorName: TaskProcessorName,
+		args: TaskArgs,
+	): InferenceTask<T> {
+		if (!(processorName in this.engine)) {
+			throw new Error(`Engine "${this.config.engine}" does not implement ${taskType}`)
 		}
-		if (!args.input) {
-			throw new Error('Input is required for embedding')
-		}
+	
 		this.lastUsed = Date.now()
 		const id = this.generateTaskId()
 		const taskLogger = withLogMeta(this.log, {
 			sequence: this.currentRequest!.sequence,
 			task: id,
 		})
+	
 		const controller = this.createTaskController({
 			timeout: args?.timeout,
 			signal: args?.signal,
 		})
-		taskLogger(LogLevels.verbose, 'Creating embedding task')
+	
 		const taskBegin = process.hrtime.bigint()
 		const taskContext = {
 			instance: this.engineRef,
 			config: this.config,
 			log: taskLogger,
 		}
-		const result = this.engine.processEmbeddingTask!(
+		
+		const processor = this.engine[processorName] as TaskProcessor<any, any, any>
+		const result: Promise<TaskResult> = processor(
 			args,
 			taskContext,
-			controller.signal,
+			controller.signal
 		)
 			.then((result) => {
 				const timeElapsed = elapsedMillis(taskBegin)
 				controller.complete()
 				if (controller.timeoutSignal.aborted) {
-					taskLogger(LogLevels.warn, 'Embedding task timed out')
+					taskLogger(LogLevels.warn, `${taskType} task timed out`)
 				}
-				taskLogger(LogLevels.verbose, 'Embedding task done', {
+				taskLogger(LogLevels.verbose, `${taskType} task done`, {
 					elapsed: timeElapsed,
 				})
 				return result
@@ -452,324 +472,45 @@ export class ModelInstance<TEngineRef = unknown> {
 				})
 				throw error
 			})
-
+	
 		return {
 			id,
 			model: this.modelId,
 			createdAt: new Date(),
 			cancel: controller.cancel,
-			result,
-		}
-	}
-
-	processImageToTextTask(args: ImageToTextTaskArgs) {
-		if (!('processImageToTextTask' in this.engine)) {
-			throw new Error(`Engine "${this.config.engine}" does not implement image to text`)
-		}
-		this.lastUsed = Date.now()
-		const id = this.generateTaskId()
-		const taskLogger = withLogMeta(this.log, {
-			sequence: this.currentRequest!.sequence,
-			task: id,
-		})
-		const controller = this.createTaskController({
-			timeout: args?.timeout,
-			signal: args?.signal,
-		})
-		const taskBegin = process.hrtime.bigint()
-		const taskContext = {
-			instance: this.engineRef,
-			config: this.config,
-			log: taskLogger,
-		}
-		const result = this.engine.processImageToTextTask!(
-			args,
-			taskContext,
-			controller.signal,
-		)
-			.then((result) => {
-				const timeElapsed = elapsedMillis(taskBegin)
-				controller.complete()
-				if (controller.timeoutSignal.aborted) {
-					taskLogger(LogLevels.warn, 'ImageToText task timed out')
-				}
-				taskLogger(LogLevels.verbose, 'ImageToText task done', {
-					elapsed: timeElapsed,
-				})
-				return result
-			})
-			.catch((error) => {
-				taskLogger(LogLevels.error, 'Task failed - ', {
-					error,
-				})
-				throw error
-			})
-
-		return {
-			id,
-			model: this.modelId,
-			createdAt: new Date(),
-			cancel: controller.cancel,
-			result,
-		}
-	}
-
-	processImageToImageTask(args: ImageToImageTaskArgs) {
-		if (!('processImageToImageTask' in this.engine)) {
-			throw new Error(`Engine "${this.config.engine}" does not implement image to image`)
-		}
-		this.lastUsed = Date.now()
-		const id = this.generateTaskId()
-		const taskLogger = withLogMeta(this.log, {
-			sequence: this.currentRequest!.sequence,
-			task: id,
-		})
-		const controller = this.createTaskController({
-			timeout: args?.timeout,
-			signal: args?.signal,
-		})
-		const taskBegin = process.hrtime.bigint()
-		const taskContext = {
-			instance: this.engineRef,
-			config: this.config,
-			log: taskLogger,
-		}
-		const result = this.engine.processImageToImageTask!(
-			args,
-			taskContext,
-			controller.signal,
-		)
-			.then((result) => {
-				const timeElapsed = elapsedMillis(taskBegin)
-				controller.complete()
-				if (controller.timeoutSignal.aborted) {
-					taskLogger(LogLevels.warn, 'ImageToImage task timed out')
-				}
-				taskLogger(LogLevels.verbose, 'ImageToImage task done', {
-					elapsed: timeElapsed,
-				})
-				return result
-			})
-			.catch((error) => {
-				taskLogger(LogLevels.error, 'Task failed - ', {
-					error,
-				})
-				throw error
-			})
-
-		return {
-			id,
-			model: this.modelId,
-			createdAt: new Date(),
-			cancel: controller.cancel,
-			result,
-		}
-	}
-
-	processSpeechToTextTask(args: SpeechToTextTaskArgs) {
-		if (!('processSpeechToTextTask' in this.engine)) {
-			throw new Error(`Engine "${this.config.engine}" does not implement speech to text`)
-		}
-		this.lastUsed = Date.now()
-		const id = this.generateTaskId()
-		const taskLogger = withLogMeta(this.log, {
-			sequence: this.currentRequest!.sequence,
-			task: id,
-		})
-		const controller = this.createTaskController({
-			timeout: args?.timeout,
-			signal: args?.signal,
-		})
-		const taskBegin = process.hrtime.bigint()
-		const taskContext = {
-			instance: this.engineRef,
-			config: this.config,
-			log: taskLogger,
-		}
-		const result = this.engine.processSpeechToTextTask!(
-			args,
-			taskContext,
-			controller.signal,
-		)
-			.then((result) => {
-				const timeElapsed = elapsedMillis(taskBegin)
-				controller.complete()
-				if (controller.timeoutSignal.aborted) {
-					taskLogger(LogLevels.warn, 'SpeechToText task timed out')
-				}
-				taskLogger(LogLevels.verbose, 'SpeechToText task done', {
-					elapsed: timeElapsed,
-				})
-				return result
-			})
-			.catch((error) => {
-				taskLogger(LogLevels.error, 'Task failed - ', {
-					error,
-				})
-				throw error
-			})
-
-		return {
-			id,
-			model: this.modelId,
-			createdAt: new Date(),
-			cancel: controller.cancel,
-			result,
-		}
-	}
-
-	processTextToSpeechTask(args: TextToSpeechTaskArgs) {
-		if (!('processTextToSpeechTask' in this.engine)) {
-			throw new Error(`Engine "${this.config.engine}" does not implement text to speech`)
-		}
-		this.lastUsed = Date.now()
-		const id = this.generateTaskId()
-		const taskLogger = withLogMeta(this.log, {
-			sequence: this.currentRequest!.sequence,
-			task: id,
-		})
-		const controller = this.createTaskController({
-			timeout: args?.timeout,
-			signal: args?.signal,
-		})
-		const taskBegin = process.hrtime.bigint()
-		const taskContext = {
-			instance: this.engineRef,
-			config: this.config,
-			log: taskLogger,
-		}
-		const result = this.engine.processTextToSpeechTask!(
-			args,
-			taskContext,
-			controller.signal,
-		)
-			.then((result) => {
-				const timeElapsed = elapsedMillis(taskBegin)
-				controller.complete()
-				if (controller.timeoutSignal.aborted) {
-					taskLogger(LogLevels.warn, 'TextToSpeech task timed out')
-				}
-				taskLogger(LogLevels.verbose, 'TextToSpeech task done', {
-					elapsed: timeElapsed,
-				})
-				return result
-			})
-			.catch((error) => {
-				taskLogger(LogLevels.error, 'Task failed - ', {
-					error,
-				})
-				throw error
-			})
-		return {
-			id,
-			model: this.modelId,
-			createdAt: new Date(),
-			cancel: controller.cancel,
-			result,
-		}
-	}
-
-	processTextToImageTask(args: TextToImageTaskArgs) {
-		if (!('processTextToImageTask' in this.engine)) {
-			throw new Error(`Engine "${this.config.engine}" does not implement text to image`)
-		}
-		this.lastUsed = Date.now()
-		const id = this.generateTaskId()
-		const taskLogger = withLogMeta(this.log, {
-			sequence: this.currentRequest!.sequence,
-			task: id,
-		})
-		const controller = this.createTaskController({
-			timeout: args?.timeout,
-			signal: args?.signal,
-		})
-		const taskBegin = process.hrtime.bigint()
-		const taskContext = {
-			instance: this.engineRef,
-			config: this.config,
-			log: taskLogger,
-		}
-		const result = this.engine.processTextToImageTask!(
-			args,
-			taskContext,
-			controller.signal,
-		)
-			.then((result) => {
-				const timeElapsed = elapsedMillis(taskBegin)
-				controller.complete()
-				if (controller.timeoutSignal.aborted) {
-					taskLogger(LogLevels.warn, 'TextToImage task timed out')
-				}
-				taskLogger(LogLevels.verbose, 'TextToImage task done', {
-					elapsed: timeElapsed,
-				})
-				return result
-			})
-			.catch((error) => {
-				taskLogger(LogLevels.error, 'Task failed - ', {
-					error,
-				})
-				throw error
-			})
-
-		return {
-			id,
-			model: this.modelId,
-			createdAt: new Date(),
-			cancel: controller.cancel,
-			result,
+			result: result as Promise<T>,
 		}
 	}
 	
+	processEmbeddingTask(args: EmbeddingTaskArgs) {
+		return this.processTask<EmbeddingTaskResult>('embedding', 'processEmbeddingTask', args)
+	}
+	
+	processImageToTextTask(args: ImageToTextTaskArgs) {
+		return this.processTask<ImageToTextTaskResult>('image-to-text', 'processImageToTextTask', args)
+	}
+	
+	processImageToImageTask(args: ImageToImageTaskArgs) {
+		return this.processTask<ImageToImageTaskResult>('image-to-image', 'processImageToImageTask', args)
+	}
+	
+	processSpeechToTextTask(args: SpeechToTextTaskArgs) {
+		return this.processTask<SpeechToTextTaskResult>('speech-to-text', 'processSpeechToTextTask', args)
+	}
+	
+	processTextToSpeechTask(args: TextToSpeechTaskArgs) {
+		return this.processTask<TextToSpeechTaskResult>('text-to-speech', 'processTextToSpeechTask', args)
+	}
+	
+	processTextToImageTask(args: TextToImageTaskArgs) {
+		return this.processTask<TextToImageTaskResult>('text-to-image', 'processTextToImageTask', args)
+	}
+	
+	processTextClassificationTask(args: TextClassificationTaskArgs) {
+		return this.processTask<TextClassificationTaskResult>('text-classification', 'processTextClassificationTask', args)
+	}
+	
 	processObjectDetectionTask(args: ObjectDetectionTaskArgs) {
-		if (!('processObjectDetectionTask' in this.engine)) {
-			throw new Error(`Engine "${this.config.engine}" does not implement object detection`)
-		}
-		this.lastUsed = Date.now()
-		const id = this.generateTaskId()
-		const taskLogger = withLogMeta(this.log, {
-			sequence: this.currentRequest!.sequence,
-			task: id,
-		})
-		const controller = this.createTaskController({
-			timeout: args?.timeout,
-			signal: args?.signal,
-		})
-		const taskBegin = process.hrtime.bigint()
-		const taskContext = {
-			instance: this.engineRef,
-			config: this.config,
-			log: taskLogger,
-		}
-		const result = this.engine.processObjectDetectionTask!(
-			args,
-			taskContext,
-			controller.signal,
-		)
-			.then((result) => {
-				const timeElapsed = elapsedMillis(taskBegin)
-				controller.complete()
-				if (controller.timeoutSignal.aborted) {
-					taskLogger(LogLevels.warn, 'object-detection task timed out')
-				}
-				taskLogger(LogLevels.verbose, 'object-detection task done', {
-					elapsed: timeElapsed,
-				})
-				return result
-			})
-			.catch((error) => {
-				taskLogger(LogLevels.error, 'Task failed - ', {
-					error,
-				})
-				throw error
-			})
-
-		return {
-			id,
-			model: this.modelId,
-			createdAt: new Date(),
-			cancel: controller.cancel,
-			result,
-		}
+		return this.processTask<ObjectDetectionTaskResult>('object-detection', 'processObjectDetectionTask', args)
 	}
 }

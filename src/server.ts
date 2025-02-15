@@ -39,6 +39,9 @@ import {
 	TextToImageInferenceTaskArgs,
 	ImageToImageInferenceTaskArgs,
 	ObjectDetectionInferenceTaskArgs,
+	TextClassificationTaskArgs,
+	TextClassificationTaskResult,
+	TextClassificationInferenceTaskArgs,
 } from '#package/types/index.js'
 import { Logger, LogLevel, createSublogger, LogLevels } from '#package/lib/logger.js'
 import { resolveModelFileLocation } from '#package/lib/resolveModelFileLocation.js'
@@ -299,6 +302,7 @@ export class InferenceServer {
 	async processTask(args: TextToImageInferenceTaskArgs): Promise<TextToImageTaskResult>
 	async processTask(args: ImageToImageInferenceTaskArgs): Promise<ImageToImageTaskResult>
 	async processTask(args: ObjectDetectionInferenceTaskArgs): Promise<ObjectDetectionTaskResult>
+	async processTask(args: TextClassificationInferenceTaskArgs): Promise<TextClassificationTaskResult>
 
 	async processTask(args: InferenceTaskArgs) {
 		const lock = await this.requestInstance(args)
@@ -343,6 +347,10 @@ export class InferenceServer {
 		if (args.task === 'object-detection') {
 			const task = lock.instance.processObjectDetectionTask(args)
 			return await waitForResult<ObjectDetectionTaskResult>(task)
+		}
+		if (args.task === 'text-classification') {
+			const task = lock.instance.processTextClassificationTask(args)
+			return await waitForResult<TextClassificationTaskResult>(task)
 		}
 
 		// @ts-expect-error
@@ -407,6 +415,13 @@ export class InferenceServer {
 	processObjectDetectionTask(args: ObjectDetectionTaskArgs) {
 		return this.processTask({
 			task: 'object-detection',
+			...args,
+		})
+	}
+	
+	processTextClassificationTask(args: TextClassificationTaskArgs) {
+		return this.processTask({
+			task: 'text-classification',
 			...args,
 		})
 	}

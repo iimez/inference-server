@@ -18,13 +18,17 @@ import {
 	ImageToTextTaskArgs,
 	SpeechToTextTaskArgs,
 	TextToSpeechTaskArgs,
-	ObjectDetection,
+	ObjectDetectionResult,
 	ObjectDetectionTaskArgs,
 	ChatCompletionTaskArgs,
 	ChatCompletionTaskResult,
 	ChatMessage,
 	MessageTextContentPart,
 	CompletionFinishReason,
+	TextClassificationTaskArgs,
+	ObjectDetectionTaskResult,
+	TextClassificationTaskResult,
+	TextToSpeechTaskResult,
 } from '#package/types/index.js'
 import {
 	env,
@@ -43,6 +47,9 @@ import {
 	ModelOutput,
 	StoppingCriteria,
 	ProgressInfo,
+	softmax,
+	TextClassificationPipeline,
+	TextClassificationSingle,
 } from '@huggingface/transformers'
 import { LogLevels } from '#package/lib/logger.js'
 import { resampleAudioBuffer } from '#package/lib/loadAudio.js'
@@ -63,6 +70,7 @@ import {
 	TransformersJsTokenizerClass,
 } from '#package/engines/transformers-js/types.js'
 import { flattenMessageTextContent } from '#package/lib/flattenMessageTextContent.js'
+import { Text } from 'openai/resources/beta/threads/messages.js'
 
 export interface TransformersJsModelComponents<TModel = PreTrainedModel> {
 	model?: TModel
@@ -453,7 +461,8 @@ export async function createInstance({ config, log }: EngineContext<Transformers
 	// warm up model by doing a tiny generation
 	if (config.task === 'chat-completion') {
 		const chatModel = instance.text || (instance.primary as TransformersJsModelComponents)
-		if (chatModel.tokenizer && !chatModel.processor) { // TODO figure out a way to warm up using processor?
+		if (chatModel.tokenizer && !chatModel.processor) {
+			// TODO figure out a way to warm up using processor?
 			const inputs = chatModel.tokenizer('a')
 			await chatModel.model!.generate({ ...inputs, max_new_tokens: 1 })
 		}
@@ -585,7 +594,7 @@ export async function processChatCompletionTask(
 		})
 	}
 	inputTokenCount = inputs.input_ids.size
-	
+
 	const stoppingCriteria = new CustomStoppingCriteria()
 	signal?.addEventListener('abort', () => {
 		stoppingCriteria.stop()
@@ -692,7 +701,7 @@ export async function processTextCompletionTask(
 		padding: true,
 		truncation: true,
 	})
-	
+
 	const stoppingCriteria = new CustomStoppingCriteria()
 	signal?.addEventListener('abort', () => {
 		stoppingCriteria.stop()
@@ -714,7 +723,6 @@ export async function processTextCompletionTask(
 		},
 	})
 
-	
 	const maxTokens = task.maxTokens ?? 128
 	const outputs: ModelOutput = await textModel.model.generate({
 		...inputs,
@@ -756,7 +764,7 @@ export async function processTextCompletionTask(
 	// @ts-ignore
 	const outputTokenCount = outputs.sequences.tolist().reduce((acc, sequence) => acc + sequence.length, 0)
 	const inputTokenCount = inputs.input_ids.size
-	
+
 	// const outputTexts = chatModel.tokenizer.batch_decode(outputs, { skip_special_tokens: false })
 	const eosToken = textModel.tokenizer._tokenizer_config.eos_token
 	const hasEogToken = outputTexts[0].endsWith(eosToken)
@@ -991,7 +999,7 @@ export async function processTextToSpeechTask(
 	task: TextToSpeechTaskArgs,
 	ctx: EngineTaskContext<TransformersJsInstance, TransformersJsModelConfig>,
 	signal?: AbortSignal,
-) {
+): Promise<TextToSpeechTaskResult> {
 	const { instance } = ctx
 	const modelComponents = instance.speech || instance.primary
 	if (!modelComponents?.model || !modelComponents?.tokenizer) {
@@ -1023,6 +1031,10 @@ export async function processTextToSpeechTask(
 			throw new Error(`No speaker embeddings found for voice ${task.voice}`)
 		}
 	}
+	
+	if (signal?.aborted) {
+		throw new Error('Task aborted')
+	}
 	const speakerEmbeddingsTensor = new Tensor('float32', speakerEmbeddings, [1, speakerEmbeddings.length])
 	const outputs = await modelComponents.model.generate_speech(encodedInputs.input_ids, speakerEmbeddingsTensor, {
 		vocoder: modelComponents.vocoder,
@@ -1036,7 +1048,7 @@ export async function processTextToSpeechTask(
 
 	return {
 		audio: {
-			samples: outputs.waveform.data,
+			samples: outputs.waveform.data as Float32Array,
 			sampleRate,
 			channels: 1,
 		},
@@ -1049,24 +1061,23 @@ export async function processObjectDetectionTask(
 	task: ObjectDetectionTaskArgs,
 	ctx: EngineTaskContext<TransformersJsInstance, TransformersJsModelConfig>,
 	signal?: AbortSignal,
-) {
+): Promise<ObjectDetectionTaskResult> {
 	const { instance } = ctx
 	if (!task.image) {
 		throw new Error('No image provided')
 	}
 	const image = task.image
 	const rawImage = new RawImage(new Uint8ClampedArray(image.data), image.width, image.height, image.channels)
-
-	if (signal?.aborted) {
-		return
-	}
-
 	const modelComponents = instance.vision || instance.primary
 	if (!(modelComponents && modelComponents.model)) {
 		throw new Error('No model loaded')
 	}
 
-	const results: ObjectDetection[] = []
+	if (signal?.aborted) {
+		throw new Error('Task aborted')
+	}
+
+	const results: ObjectDetectionResult[] = []
 
 	if (task?.labels?.length) {
 		if (!modelComponents.tokenizer || !modelComponents.processor) {
@@ -1133,6 +1144,129 @@ export async function processObjectDetectionTask(
 	}
 
 	return {
-		objects: results,
+		detections: results,
 	}
+}
+
+// https://github.com/huggingface/transformers.js/blob/6f43f244e04522545d3d939589c761fdaff057d4/src/pipelines.js#L1135
+export async function processTextClassificationTask(
+	task: TextClassificationTaskArgs,
+	ctx: EngineTaskContext<TransformersJsInstance, TransformersJsModelConfig>,
+	signal?: AbortSignal,
+): Promise<TextClassificationTaskResult> {
+	const { instance } = ctx
+	const modelComponents = instance.text || instance.primary
+	if (!modelComponents?.tokenizer || !modelComponents?.model) {
+		throw new Error('No text model loaded')
+	}
+	
+	if (signal?.aborted) {
+		throw new Error('Task aborted')
+	}
+
+	if (!task.labels?.length) {
+		// Reuse the pipeline for normal text classification
+		const pipeline = new TextClassificationPipeline({
+			task: 'text-classification',
+			model: modelComponents.model,
+			tokenizer: modelComponents.tokenizer,
+		})
+		const pipelineRes = await pipeline(task.input, { top_k: task.topK })
+		if (Array.isArray(pipelineRes)) {
+			const resultItems = pipelineRes as TextClassificationSingle[]
+			const classifications = resultItems.map((item) => {
+				const labels = [
+					{
+						name: item.label,
+						score: item.score,
+					},
+				]
+				return { labels }
+			})
+			return { classifications }
+		}
+
+		const singleResultItem = pipelineRes as TextClassificationSingle
+		const labels = [
+			{
+				name: singleResultItem.label,
+				score: singleResultItem.score,
+			},
+		]
+		return {
+			classifications: [{ labels }],
+		}
+	}
+
+	// Zero shot classification
+	// @ts-ignore
+	const label2id = modelComponents.model.config.label2id
+	let entailmentId = label2id['entailment']
+	if (entailmentId === undefined) {
+		console.warn("Could not find 'entailment' in label2id mapping. Using 2 as entailment_id.")
+		entailmentId = 2
+	}
+	let contradictionId = label2id['contradiction'] ?? label2id['not_entailment']
+	if (contradictionId === undefined) {
+		console.warn("Could not find 'contradiction' in label2id mapping. Using 0 as contradiction_id.")
+		contradictionId = 0
+	}
+
+	const texts = []
+	if (typeof task.input === 'string') {
+		texts.push(task.input)
+	} else if (Array.isArray(task.input)) {
+		texts.push(...task.input)
+	} else {
+		throw new Error('Invalid input')
+	}
+	const hypotheses = task.labels!.map((label) => task.hypothesisTemplate!.replace('{}', label))
+
+	// How to perform the softmax over the logits:
+	//  - true:  softmax over the entailment vs. contradiction dim for each label independently
+	//  - false: softmax the "entailment" logits over all candidate labels
+	const softmaxEach = task.labels!.length === 1
+
+	const toReturn = []
+	for (const premise of texts) {
+		const entailsLogits = []
+
+		for (const hypothesis of hypotheses) {
+			const inputs = modelComponents.tokenizer(premise, {
+				text_pair: hypothesis,
+				padding: true,
+				truncation: true,
+			})
+			const outputs = await modelComponents.model(inputs)
+
+			if (softmaxEach) {
+				entailsLogits.push([outputs.logits.data[contradictionId], outputs.logits.data[entailmentId]])
+			} else {
+				entailsLogits.push(outputs.logits.data[entailmentId])
+			}
+		}
+
+		const scores = softmaxEach ? entailsLogits.map((x) => softmax(x)[1]) : softmax(entailsLogits)
+		const scoresSorted = scores.map((x, i) => [x, i]).sort((a, b) => b[0] - a[0])
+
+		toReturn.push({
+			sequence: premise,
+			labels: scoresSorted.map((x) => task.labels![x[1]]),
+			scores: scoresSorted.map((x) => x[0]),
+		})
+	}
+
+	const classifications = toReturn.map((x) => {
+		let labels = x.labels.map((label, i) => {
+			return {
+				name: label,
+				score: x.scores[i],
+			}
+		})
+		if (task.topK) {
+			labels = labels.slice(0, task.topK)
+		}
+		return { labels }
+	})
+	return { classifications }
 }

@@ -8,6 +8,7 @@ import {
 	Image,
 	Audio,
 	ModelConfig,
+	TaskArgs,
 	ChatCompletionTaskArgs,
 	TextCompletionTaskArgs,
 	EmbeddingTaskArgs,
@@ -17,6 +18,7 @@ import {
 	TextToImageTaskArgs,
 	ImageToImageTaskArgs,
 	ObjectDetectionTaskArgs,
+	TextClassificationTaskArgs,
 } from '#package/types/index.js'
 
 export interface TextCompletionParamsBase {
@@ -110,6 +112,15 @@ export interface ObjectDetectionParams {
 	model: string
 	image: Image
 	threshold?: number
+	labels?: string[]
+}
+
+export interface TextClassificationParams {
+	model: string
+	input: string | string[]
+	hypothesisTemplate?: string
+	threshold?: number
+	topK?: number
 	labels?: string[]
 }
 
@@ -227,7 +238,19 @@ export interface ModelEngine<
 		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
 		signal?: AbortSignal,
 	) => Promise<ObjectDetectionTaskResult>
+	processTextClassificationTask?: (
+		task: TextClassificationTaskArgs,
+		ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
+		signal?: AbortSignal,
+	) => Promise<TextClassificationTaskResult>
 }
+
+export type TaskProcessorName = keyof Omit<ModelEngine, 'createInstance' | 'disposeInstance' | 'prepareModel' | 'start' | 'autoGpu'>
+export type TaskProcessor<TModelInstance, TModelConfig extends ModelConfig, TModelMeta> = (
+	task: TaskArgs,
+	ctx: EngineTaskContext<TModelInstance, TModelConfig, TModelMeta>,
+	signal?: AbortSignal,
+) => Promise<TaskResult>
 
 export interface EmbeddingTaskResult {
 	embeddings: Float32Array[]
@@ -272,9 +295,10 @@ export interface TextToSpeechTaskResult {
 	audio: Audio
 }
 
-export interface ObjectDetection {
+export interface ObjectDetectionResult {
 	label: string
 	score: number
+	// labels: Array<{ name: string; score: number }>
 	box: {
 		x: number
 		y: number
@@ -284,10 +308,18 @@ export interface ObjectDetection {
 }
 
 export interface ObjectDetectionTaskResult {
-	objects: ObjectDetection[]
+	detections: ObjectDetectionResult[]
 }
 
-export type InferenceTaskResult =
+export interface TextClassificationResult {
+	labels: Array<{ name: string; score: number }>
+}
+
+export interface TextClassificationTaskResult {
+	classifications: TextClassificationResult[]
+}
+
+export type TaskResult =
 	| ChatCompletionTaskResult
 	| TextCompletionTaskResult
 	| EmbeddingTaskResult
@@ -297,3 +329,4 @@ export type InferenceTaskResult =
 	| TextToImageTaskResult
 	| ImageToImageTaskResult
 	| ObjectDetectionTaskResult
+	| TextClassificationTaskResult

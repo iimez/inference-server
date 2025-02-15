@@ -160,13 +160,13 @@ suite('image recognition', () => {
 				task: 'chat-completion',
 				prepare: 'blocking',
 				dtype: {
-					prepare_inputs_embeds: "q4",
-					language_model: "q4f16",
-					lm_head: "fp16",
-					gen_head: "fp16",
-					gen_img_embeds: "fp16",
-					image_decode: "fp32",
-				}
+					prepare_inputs_embeds: 'q4',
+					language_model: 'q4f16',
+					lm_head: 'fp16',
+					gen_head: 'fp16',
+					gen_img_embeds: 'fp16',
+					image_decode: 'fp32',
+				},
 			},
 		},
 	})
@@ -206,7 +206,8 @@ suite('image recognition', () => {
 			messages: [
 				{
 					role: 'system',
-					content: 'You are a helpful language and vision assistant. You are able to understand the visual content that the user provides, and assist the user with a variety of tasks using natural language.',
+					content:
+						'You are a helpful language and vision assistant. You are able to understand the visual content that the user provides, and assist the user with a variety of tasks using natural language.',
 				},
 				{
 					role: 'user',
@@ -264,8 +265,8 @@ suite('object detection', () => {
 			image,
 			labels: ['cat', 'smurf'],
 		})
-		expect(res.objects).toBeTruthy()
-		expect(res.objects[0].label).toBe('cat')
+		expect(res.detections).toBeTruthy()
+		expect(res.detections[0].label).toBe('cat')
 		// const debugImage = await drawBoundingBoxes(image, res.objects)
 		// await saveImageToFile(debugImage, 'tests/fixtures/blue-cat-detected.png')
 	})
@@ -276,7 +277,7 @@ suite('object detection', () => {
 			model: 'table-transformer-detection',
 			image,
 		})
-		const tableObject = tableRes.objects[0]
+		const tableObject = tableRes.detections[0]
 		expect(tableObject).toBeTruthy()
 		// padding because https://github.com/microsoft/table-transformer/issues/21
 		const paddedCrop = await createPaddedCrop(image, tableObject.box, 40)
@@ -285,8 +286,8 @@ suite('object detection', () => {
 			model: 'table-transformer-structure-recognition',
 			image: paddedCrop,
 		})
-		expect(tableStructureRes.objects).toBeTruthy()
-		const tableRows = tableStructureRes.objects.filter((x) => x.label === 'table row')
+		expect(tableStructureRes.detections).toBeTruthy()
+		const tableRows = tableStructureRes.detections.filter((x) => x.label === 'table row')
 		expect(tableRows.length).toEqual(8)
 		// const imageWithBoundingBoxes = await drawBoundingBoxes(paddedCrop, tableRows)
 		// await saveImageToFile(imageWithBoundingBoxes, 'tests/fixtures/table-detected-rows.png')
@@ -348,7 +349,7 @@ suite('speech syntesis and transcription', () => {
 	})
 })
 
-suite('text and chat', () => {
+suite('text generation', () => {
 	const inferenceServer = new InferenceServer({
 		log: 'debug',
 		models: {
@@ -391,5 +392,50 @@ suite('text and chat', () => {
 		})
 		console.debug(res)
 		expect(res.message.content).toMatch(/Paris/)
+	})
+})
+
+suite('text classification', () => {
+	const inferenceServer = new InferenceServer({
+		log: 'debug',
+		models: {
+			zeroshot2: {
+				url: 'https://huggingface.co/MoritzLaurer/ModernBERT-large-zeroshot-v2.0',
+				engine: 'transformers-js',
+				task: 'text-classification',
+				prepare: 'blocking',
+				dtype: 'int8',
+			},
+			'distilbert-sentiment': {
+				url: 'https://huggingface.co/Xenova/distilbert-base-uncased-finetuned-sst-2-english',
+				engine: 'transformers-js',
+				task: 'text-classification',
+				prepare: 'blocking',
+			},
+		},
+	})
+	beforeAll(async () => {
+		await inferenceServer.start()
+	})
+	afterAll(async () => {
+		await inferenceServer.stop()
+	})
+
+	test('zero shot classification', async () => {
+		const res = await inferenceServer.processTextClassificationTask({
+			model: 'zeroshot2',
+			input: 'Product worked great until it developed a crush on my microwave.',
+			hypothesisTemplate: 'The sentiment is {}.',
+			labels: ['positive', 'negative'],
+		})
+		expect(res.classifications[0].labels[0].name).toBe('negative')
+	})
+
+	test('sentiment classification', async () => {
+		const res = await inferenceServer.processTextClassificationTask({
+			model: 'distilbert-sentiment',
+			input: 'The flight was delayed and they lost my luggage.',
+		})
+		expect(res.classifications[0].labels[0].name).toBe('NEGATIVE')
 	})
 })

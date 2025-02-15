@@ -14,7 +14,7 @@ import type {
 	TransformersJsProcessorClass,
 	TransformersJsDataType,
 } from '#package/engines/transformers-js/types.js'
-import type { InferenceParams, TextCompletionParams } from '#package/types/engine.js'
+import type { InferenceParams, TextCompletionParams, TextCompletionParamsBase } from '#package/types/engine.js'
 import type { TaskKind } from '#package/types/tasks.js'
 
 export * from '#package/types/chat.js'
@@ -89,11 +89,52 @@ interface EmbeddingModelOptions {
 
 export type TextCompletionGrammar = string | SomeJSONSchema
 
+// export declare interface Schema {
+// 	/**
+// 	 * Optional. The type of the property. {@link
+// 	 * SchemaType}.
+// 	 */
+// 	type?: SchemaType;
+// 	/** Optional. The format of the property. */
+// 	format?: string;
+// 	/** Optional. The description of the property. */
+// 	description?: string;
+// 	/** Optional. Whether the property is nullable. */
+// 	nullable?: boolean;
+// 	/** Optional. The items of the property. */
+// 	items?: Schema;
+// 	/** Optional. The enum of the property. */
+// 	enum?: string[];
+// 	/** Optional. Map of {@link Schema}. */
+// 	properties?: {
+// 			[k: string]: Schema;
+// 	};
+// 	/** Optional. Array of required property. */
+// 	required?: string[];
+// 	/** Optional. The example of the property. */
+// 	example?: unknown;
+// }
+
+// export declare enum SchemaType {
+// 	/** String type. */
+// 	STRING = "string",
+// 	/** Number type. */
+// 	NUMBER = "number",
+// 	/** Integer type. */
+// 	INTEGER = "integer",
+// 	/** Boolean type. */
+// 	BOOLEAN = "boolean",
+// 	/** Array type. */
+// 	ARRAY = "array",
+// 	/** Object type. */
+// 	OBJECT = "object"
+// }
+
 interface TextCompletionModelOptions {
 	task: 'text-completion'
 	contextSize?: number
 	grammars?: Record<string, TextCompletionGrammar>
-	completionDefaults?: TextCompletionParams
+	completionDefaults?: TextCompletionParamsBase
 	initialMessages?: ChatMessage[]
 	prefix?: string
 	batchSize?: number
@@ -272,7 +313,7 @@ export interface TransformersJsSpeechModel {
 // TODO improve, split these by task and create union?
 interface TransformersJsModelOptions extends BuiltInModelOptionsBase, TransformersJsModel, TransformersJsSpeechModel {
 	engine: 'transformers-js'
-	task: 'image-to-text' | 'speech-to-text' | 'text-to-speech' | 'text-completion' | 'chat-completion' | 'embedding' | 'object-detection'
+	task: 'image-to-text' | 'speech-to-text' | 'text-to-speech' | 'text-completion' | 'chat-completion' | 'embedding' | 'object-detection' | 'text-classification'
 	textModel?: TransformersJsModel
 	visionModel?: TransformersJsModel
 	speechModel?: TransformersJsModel & TransformersJsSpeechModel

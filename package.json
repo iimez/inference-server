@@ -19,7 +19,7 @@
 		"upgrade": "npx npm-check-updates -i",
 		"reinstall": "rimraf node_modules && npm install",
 		"clean": "rimraf dist",
-		"download-testmodels": "infs prepare ./tests/testmodels.config.js",
+		"download-testmodels": "node ./dist/cli/index.js prepare ./tests/testmodels.config.js",
 		"prebuild": "npm run clean",
 		"build": "tsc -p tsconfig.release.json && tsc-alias -p tsconfig.release.json",
 		"test": "vitest --run",

@@ -103,6 +103,17 @@ export const config = {
 			engine: 'transformers-js',
 			task: 'chat-completion',
 			dtype: 'int8',
+		},
+		'zeroshot2': {
+			url: 'https://huggingface.co/MoritzLaurer/ModernBERT-large-zeroshot-v2.0',
+			engine: 'transformers-js',
+			task: 'text-classification',
+			dtype: 'int8',
+		},
+		'distilbert-sentiment': {
+			url: 'https://huggingface.co/Xenova/distilbert-base-uncased-finetuned-sst-2-english',
+			engine: 'transformers-js',
+			task: 'text-classification',
 		}
 	},
 }
