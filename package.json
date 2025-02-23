@@ -1,6 +1,6 @@
 {
 	"name": "inference-server",
-	"version": "1.0.0-beta.28",
+	"version": "1.0.0-beta.29",
 	"description": "Libraries and server to build AI applications. Adapters to various native bindings allowing local inference. Integrate it with your application, or use as a microservice.",
 	"main": "dist/index.js",
 	"source": "src/index.ts",
@@ -86,7 +86,7 @@
 		"express": "^4.21.2",
 		"ipull": "^3.9.2",
 		"micromatch": "^4.0.8",
-		"nanoid": "^5.1.0",
+		"nanoid": "^5.1.2",
 		"p-queue": "^8.1.0",
 		"pretty-bytes": "^6.1.1",
 		"pretty-ms": "^9.2.0",
@@ -101,19 +101,19 @@
 		"@types/cors": "^2.8.17",
 		"@types/express": "^5.0.0",
 		"@types/micromatch": "^4.0.9",
-		"@types/node": "^22.13.4",
+		"@types/node": "^22.13.5",
 		"@types/proper-lockfile": "^4.1.4",
 		"@types/supertest": "^6.0.2",
 		"@types/yargs": "^17.0.33",
 		"concurrently": "^9.1.2",
 		"cross-env": "^7.0.3",
 		"gpt4all": "^4.0.0",
-		"node-llama-cpp": "^3.5.0",
-		"openai": "^4.85.1",
+		"node-llama-cpp": "^3.6.0",
+		"openai": "^4.85.4",
 		"supertest": "^7.0.0",
 		"tsc-alias": "^1.8.10",
 		"typescript": "^5.7.3",
 		"vite-tsconfig-paths": "^5.1.4",
-		"vitest": "^3.0.5"
+		"vitest": "^3.0.6"
 	}
 }

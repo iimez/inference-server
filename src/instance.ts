@@ -31,9 +31,10 @@ import {
 	TextClassificationTaskResult,
 	ObjectDetectionTaskResult,
 } from '#package/types/index.js'
-import { calculateContextIdentity } from '#package/lib/calculateContextIdentity.js'
+import { calculateChatContextIdentity } from '#package/lib/calculateChatContextIdentity.js'
 import { LogLevels, Logger, createLogger, withLogMeta } from '#package/lib/logger.js'
 import { elapsedMillis, mergeAbortSignals } from '#package/lib/util.js'
+import { getLargestCommonPrefix } from '#package/lib/getLargestCommonPrefix.js'
 
 const idAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 const generateId = customAlphabet(idAlphabet, 8)
@@ -125,14 +126,12 @@ export class ModelInstance<TEngineRef = unknown> {
 			)
 			this.status = 'idle'
 			if (this.config.initialMessages?.length) {
-				this.contextIdentity = calculateContextIdentity({
+				this.contextIdentity = calculateChatContextIdentity({
 					messages: this.config.initialMessages,
 				})
 			}
 			if (this.config.prefix) {
-				this.contextIdentity = calculateContextIdentity({
-					text: this.config.prefix,
-				})
+				this.contextIdentity = this.config.prefix
 			}
 			this.log(LogLevels.debug, 'Instance loaded', {
 				elapsed: elapsedMillis(loadBegin),
@@ -184,23 +183,18 @@ export class ModelInstance<TEngineRef = unknown> {
 		if (!this.contextIdentity) {
 			return false
 		}
-		let incomingContextIdentity = ''
 		if ('messages' in request && request.messages?.length) {
-			incomingContextIdentity = calculateContextIdentity({
+			const incomingContextIdentity = calculateChatContextIdentity({
 				messages: request.messages,
 				dropLastUserMessage: true,
 			})
+			return this.contextIdentity === incomingContextIdentity
 		} else if ('prompt' in request && request.prompt) {
-			incomingContextIdentity = calculateContextIdentity({
-				text: request.prompt,
-			})
+			const commonPrefix = getLargestCommonPrefix(this.contextIdentity, request.prompt)
+			return commonPrefix.length > 0
 		}
-
-		if (!incomingContextIdentity) {
-			return false
-		}
-
-		return this.contextIdentity === incomingContextIdentity || incomingContextIdentity.startsWith(this.contextIdentity)
+		
+		return false
 	}
 
 	matchesRequirements(request: ModelInstanceRequest) {
@@ -267,7 +261,7 @@ export class ModelInstance<TEngineRef = unknown> {
 			signal: args?.signal,
 		})
 		// start completion processing
-		taskLogger(LogLevels.verbose, 'Creating chat completion')
+		taskLogger(LogLevels.info, 'Processing chat completion task')
 		const taskBegin = process.hrtime.bigint()
 		const taskContext = {
 			instance: this.engineRef,
@@ -286,7 +280,7 @@ export class ModelInstance<TEngineRef = unknown> {
 				} else if (controller.cancelSignal.aborted) {
 					result.finishReason = 'cancel'
 				}
-				this.contextIdentity = calculateContextIdentity({
+				this.contextIdentity = calculateChatContextIdentity({
 					messages: [...args.messages, result.message],
 				})
 				return result
@@ -351,7 +345,7 @@ export class ModelInstance<TEngineRef = unknown> {
 			timeout: args?.timeout,
 			signal: args?.signal,
 		})
-		taskLogger(LogLevels.verbose, 'Creating text completion task')
+		taskLogger(LogLevels.info, 'Processing text completion task')
 		// pass on resetContext if this instance has been flagged for reset
 		let resetContext = false
 		if (this.needsContextReset) {
@@ -376,9 +370,7 @@ export class ModelInstance<TEngineRef = unknown> {
 				} else if (controller.cancelSignal.aborted) {
 					result.finishReason = 'cancel'
 				}
-				this.contextIdentity = calculateContextIdentity({
-					text: args.prompt + result.text,
-				})
+				this.contextIdentity = args.prompt + result.text
 				return result
 			})
 			.catch((error) => {
@@ -449,6 +441,8 @@ export class ModelInstance<TEngineRef = unknown> {
 			log: taskLogger,
 		}
 		
+		taskLogger(LogLevels.info, `Processing ${taskType} task`)
+		
 		const processor = this.engine[processorName] as TaskProcessor<any, any, any>
 		const result: Promise<TaskResult> = processor(
 			args,
@@ -461,7 +455,7 @@ export class ModelInstance<TEngineRef = unknown> {
 				if (controller.timeoutSignal.aborted) {
 					taskLogger(LogLevels.warn, `${taskType} task timed out`)
 				}
-				taskLogger(LogLevels.verbose, `${taskType} task done`, {
+				taskLogger(LogLevels.info, `${taskType} task done`, {
 					elapsed: timeElapsed,
 				})
 				return result

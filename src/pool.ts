@@ -496,13 +496,13 @@ export class ModelPool extends EventEmitter3<ModelPoolEvent> {
 	}
 
 	// requests a model instance from the pool
-	async requestInstance(params: InferenceParams, signal?: AbortSignal): Promise<ModelInstanceHandle> {
+	async requestInstance(params: Partial<InferenceParams>, signal?: AbortSignal): Promise<ModelInstanceHandle> {
 		if (this.shutdownController.signal.aborted) {
 			throw new Error('Pool is disposed')
 		}
 		const requestSequence = this.createRequestSequence()
 		const request = {
-			...params,
+			...params as InferenceParams,
 			sequence: requestSequence,
 			abortController: new AbortController(),
 		}

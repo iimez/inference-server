@@ -39,7 +39,7 @@ export interface TextCompletionParamsBase {
 
 export interface TextCompletionParams extends TextCompletionParamsBase {
 	model: string
-	prompt?: string
+	prompt: string
 }
 
 export interface ChatCompletionParams extends TextCompletionParamsBase {
