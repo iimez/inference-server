@@ -150,7 +150,7 @@ export class ModelStore {
 				model.downloads = undefined
 				model.meta = modelMeta
 				model.status = 'ready'
-				this.log(LogLevels.info, 'Model ready', {
+				this.log(LogLevels.info, 'Model ready to use', {
 					model: modelId,
 					task: model.task,
 				})

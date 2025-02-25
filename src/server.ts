@@ -204,6 +204,7 @@ export class InferenceServer {
 	 * @returns {Promise<void>} Resolves when the server is fully started.
 	 */
 	async start() {
+		this.log(LogLevels.info, 'Starting inference server ...')
 		const engineStartPromises = []
 		// call startEngine on custom engines
 		for (const [key, methods] of Object.entries(this.engines)) {
@@ -235,14 +236,17 @@ export class InferenceServer {
 				}),
 			)
 		}
+		this.log(LogLevels.debug, 'Waiting for engines to start ...')
 		await Promise.all(engineStartPromises)
+		this.log(LogLevels.debug, `Engines started: ${Object.keys(this.engines).join(', ')}`)
 		await Promise.all([this.store.init(this.engines), this.pool.init(this.engines)])
+		this.log(LogLevels.info, 'Inference server started')
 	}
 	/**
 	 * Stops the server. disposes all resources. Clears the queue of working tasks.
 	 **/
 	async stop() {
-		this.log(LogLevels.info, 'Stopping model server')
+		this.log(LogLevels.info, 'Stopping inference server ...')
 		this.pool.queue.clear()
 		this.store.dispose()
 
