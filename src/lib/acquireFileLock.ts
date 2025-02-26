@@ -13,26 +13,47 @@ export function acquireFileLock(fileOrDirPath: string, signal?: AbortSignal): Pr
 	const pathInfo = path.parse(fileOrDirPath)
 	const looksLikeFile = !!pathInfo.ext
 	const doesExist = fs.existsSync(fileOrDirPath)
+
+	// Check write permissions on parent directory for creation
+	try {
+		if (!doesExist) {
+			fs.accessSync(path.dirname(fileOrDirPath), fs.constants.W_OK)
+		}
+		// Check permissions on the actual path
+		if (doesExist) {
+			fs.accessSync(fileOrDirPath, fs.constants.R_OK | fs.constants.W_OK)
+		}
+	} catch (err) {
+		const message = err instanceof Error ? err.message : 'unknown error'
+		return Promise.reject(new Error(`Insufficient permissions for ${fileOrDirPath}: ${message}`))
+	}
+
+	// Create the file or directory if it does not exist
 	if (looksLikeFile && !doesExist) {
 		touchFileSync(fileOrDirPath)
 	}
 	if (!looksLikeFile && !doesExist) {
 		fs.mkdirSync(fileOrDirPath, { recursive: true })
 	}
+
+	// If the lockfile exists but the lock is not active, it's likely a stale lock
 	const isLocked = lockfile.checkSync(fileOrDirPath)
 	const lockExists = fs.existsSync(`${fileOrDirPath}.lock`)
 	if (!isLocked && lockExists) {
-		fs.rmSync(`${fileOrDirPath}.lock`, { recursive: true, force: true });
+		fs.rmSync(`${fileOrDirPath}.lock`, { recursive: true, force: true })
 	}
+
 	return new Promise((resolve, reject) => {
-		lockfile.lock(fileOrDirPath, { retries: { forever: true } })
-		.then((release) => {
-			signal?.addEventListener('abort', release)
-			resolve(() => {
-				release()
-				signal?.removeEventListener('abort', release)
+		// Note that on linux this retries forever if we don't have permissions on fileOrDirPath
+		lockfile
+			.lock(fileOrDirPath, { retries: { forever: true } })
+			.then((release) => {
+				signal?.addEventListener('abort', release)
+				resolve(() => {
+					release()
+					signal?.removeEventListener('abort', release)
+				})
 			})
-		})
-		.catch(reject)
+			.catch((err) => reject(new Error(`Failed to acquire lock on ${fileOrDirPath}: ${err.message}`)))
 	})
 }

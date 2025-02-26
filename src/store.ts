@@ -73,7 +73,12 @@ export class ModelStore {
 				this.prepareModel(modelId)
 			}
 		}
-		await Promise.all(blockingPromises)
+		
+		if (blockingPromises.length) {
+			this.log(LogLevels.debug, `Preparing files for ${blockingPromises.length} models`)
+			await Promise.all(blockingPromises)
+			this.log(LogLevels.debug, 'All files for initially required models are ready')
+		}
 	}
 
 	dispose() {

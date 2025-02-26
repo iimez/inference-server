@@ -102,20 +102,24 @@ export class ModelPool extends EventEmitter3<ModelPoolEvent> {
 			const spawnPromises = this.ensureModelInstances(modelConfig)
 			initPromises.push(...spawnPromises)
 		}
-		
-		this.log(LogLevels.debug, `Initializing pool with ${initPromises.length} instances`)
 
-		// resolve when all initial instances are loaded
-		await Promise.allSettled(initPromises)
-		
-		this.log(LogLevels.debug, 'Pool ready')
+		if (initPromises.length) {
+			this.log(LogLevels.debug, 'Spawning initial instances ...')
+			// resolve when all initial instances are loaded
+			await Promise.allSettled(initPromises)
+			const instanceCount = Object.values(this.instances).length
+			this.log(LogLevels.debug, 'Initial instances ready', {
+				count: instanceCount,
+			})
+		}
+
 		this.emit('ready')
 		this.cleanupInterval = setInterval(() => {
 			this.disposeOutdatedInstances()
 		}, 1000 * 60) // every minute
 	}
 
-	// see if the minInstances for a models are spawned. if not, spawn them.
+	// Check if the minInstances for a models are spawned. if not, spawn them.
 	ensureModelInstances(model: ModelConfig) {
 		const spawnPromises = []
 		const instanceCount = model.minInstances ?? 0
